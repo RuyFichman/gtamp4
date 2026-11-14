@@ -49,11 +49,11 @@ def test_interrupted_jobs_are_requeued(session: Session) -> None:
 
 def test_known_youtube_errors_get_a_hint(session: Session) -> None:
     def blocked(s: Session, job: Job) -> None:
-        raise RuntimeError("ERROR: [youtube] abc: Sign in to confirm you're not a bot.")
+        raise RuntimeError("ERROR: [youtube] abc: Sign in to confirm you’re not a bot.")
 
     HANDLERS["test_bot"] = blocked
     job = queue.enqueue(session, "test_bot")
     process_one(session)
     session.refresh(job)
     assert (job.error or "").startswith("O YouTube pediu verificação")
-    assert "not a bot" in (job.error or "")
+    assert "not a bot" in (job.error or "")  # raw error kept below the hint

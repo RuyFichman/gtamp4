@@ -32,3 +32,19 @@ export function captionText(description: string, hashtags: string[]): string {
   const tags = hashtags.map((h) => `#${h}`).join(' ')
   return [description.trim(), tags].filter(Boolean).join('\n\n')
 }
+
+/** 83.4 -> "1:23.4" (Studio precision) */
+export function formatTime(seconds: number): string {
+  const tenths = Math.round(seconds * 10)
+  const m = Math.floor(tenths / 600)
+  const s = (tenths % 600) / 10
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`
+}
+
+/** Accepts "1:23.4", "83.4" or "83,4". */
+export function parseTime(text: string): number | null {
+  const parts = text.trim().replace(',', '.').split(':')
+  if (parts.length > 2 || parts.some((p) => p === '' || Number.isNaN(Number(p)))) return null
+  const value = parts.length === 2 ? Number(parts[0]) * 60 + Number(parts[1]) : Number(parts[0])
+  return value >= 0 ? value : null
+}

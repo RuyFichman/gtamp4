@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PostCard } from '../components/PostCard'
 import { PostedList } from '../components/PostedList'
+import { StudioModal } from '../components/StudioModal'
 import { api } from '../lib/api'
 import type { Account, Clip } from '../lib/types'
 
@@ -9,6 +10,7 @@ export function PostPage() {
   const [posted, setPosted] = useState<Clip[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [studioId, setStudioId] = useState<number | null>(null)
 
   const load = useCallback(() => {
     Promise.all([api.clips('approved', 'potential'), api.clips('posted', 'posted'), api.accounts()])
@@ -56,6 +58,7 @@ export function PostPage() {
                 accounts={accounts}
                 onPosted={onPosted}
                 onUnapprove={(id) => moveTo(id, 'pending_review')}
+                onStudio={setStudioId}
               />
             ))}
           </div>
@@ -66,6 +69,10 @@ export function PostPage() {
         <h2 className="text-xl font-bold">Já postados ({posted.length})</h2>
         <PostedList clips={posted} accounts={accounts} onUndo={(id) => moveTo(id, 'approved')} />
       </section>
+
+      {studioId != null && (
+        <StudioModal clipId={studioId} onClose={() => setStudioId(null)} onSaved={load} />
+      )}
     </div>
   )
 }

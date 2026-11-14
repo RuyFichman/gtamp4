@@ -2,6 +2,7 @@ import type {
   Account,
   AccountInput,
   Clip,
+  ClipEdit,
   ClipSort,
   ClipStatus,
   Health,
@@ -12,6 +13,7 @@ import type {
   RadarQueryKind,
   RadarStatus,
   Source,
+  Studio,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -46,6 +48,9 @@ export const api = {
       post_url: postUrl,
     }),
   clipDownloadUrl: (id: number) => `/api/clips/${id}/download`,
+  studio: (id: number) => request<Studio>(`/clips/${id}/studio`),
+  editClip: (id: number, data: ClipEdit) =>
+    request<Studio>(`/clips/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   accounts: () => request<Account[]>('/accounts'),
   createAccount: (data: AccountInput) => post<Account>('/accounts', data),
   updateAccount: (id: number, data: AccountInput) =>

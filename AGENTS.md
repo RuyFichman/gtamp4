@@ -105,6 +105,13 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 
 Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 
+## Estúdio
+
+- Abre num painel (`StudioModal`) pelo botão "Estúdio" dos cards (Aprovar e Postagem). Não é uma aba.
+- `GET /api/clips/{id}/studio`: corte, vídeo original (`/api/media/videos/`, com Range, então dá para pular no player), transcrição e o job de render pendente.
+- `PATCH /api/clips/{id}`: o texto é salvo na hora. Início/fim novos (3 a 180 s) viram um job `render_clip`; o `Clip` só muda depois do render dar certo. O arquivo novo se chama `{youtube_id}_{clip_id}_{start}-{end}.mp4`; o antigo é apagado se nenhum outro corte usa. Um render por corte de cada vez (409).
+- Se o vídeo original foi apagado do disco, o job baixa de novo.
+
 ## Radar
 
 - `scheduler.py`: um tick do APScheduler a cada 1 min lê a config do banco (`store.py`, tabela `setting`) e só **enfileira** jobs: `radar_scan` no intervalo escolhido (se ligado) e `refresh_views` a cada 3 h. O worker executa. Nunca publica nada.
@@ -182,6 +189,6 @@ npx tsc --noEmit   # typecheck
 2. ~~Aba Aprovar com cards~~ feito.
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
-5. Moldura (upload do PNG de overlay), Estúdio, Painel, Aquecimento, Ajustes.
+5. ~~Estúdio~~ feito. Faltam: Moldura (upload do PNG de overlay), Painel, Aquecimento, Ajustes.
 
 Itens adiados: ver `docs/BACKLOG.md`.

@@ -9,9 +9,10 @@ type Props = {
   accounts: Account[]
   onPosted: (clip: Clip) => void
   onUnapprove: (id: number) => void
+  onStudio: (id: number) => void
 }
 
-export function PostCard({ clip, accounts, onPosted, onUnapprove }: Props) {
+export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio }: Props) {
   const [accountId, setAccountId] = useState<number | ''>('')
   const [postUrl, setPostUrl] = useState('')
   const [saving, setSaving] = useState(false)
@@ -71,6 +72,13 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove }: Props) {
           >
             Baixar vídeo
           </a>
+          <button
+            type="button"
+            onClick={() => onStudio(clip.id)}
+            className="rounded border border-white/20 px-2 py-1 hover:bg-white/10"
+          >
+            Estúdio
+          </button>
           <CopyButton text={clip.title} label="Copiar título" />
           <CopyButton text={caption} label="Copiar legenda" />
           <CopyButton

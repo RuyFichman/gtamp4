@@ -6,8 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlmodel import Session, col, select
 
-from app.api.schemas import ClipOut, ClipStatusIn
+from app.api.schemas import ClipEditIn, ClipOut, ClipStatusIn, JobOut, Segment, StudioOut
 from app.db import get_session
+from app.jobs import queue
+from app.jobs.handlers import (
+    RENDER_CLIP,
+    STUDIO_MAX_S,
+    STUDIO_MIN_S,
+    pending_renders,
+)
 from app.models import Account, Clip, ClipStatus, SourceVideo, utcnow
 
 router = APIRouter(prefix="/api/clips", tags=["clips"])
@@ -33,7 +40,8 @@ def list_clips(
         .where(Clip.status == status)
         .order_by(SORTS[sort], col(Clip.id).desc())
     ).all()
-    return [ClipOut.of(c, v) for c, v in rows]
+    rendering = pending_renders(session)
+    return [ClipOut.of(c, v, rendering=c.id in rendering) for c, v in rows]
 
 
 @router.post("/{clip_id}/status")
@@ -67,3 +75,83 @@ def download_clip(clip_id: int, session: SessionDep) -> FileResponse:
         raise HTTPException(404, "Arquivo do corte não encontrado.")
     slug = re.sub(r"[^\w\- ]+", "", clip.title).strip()[:60] or f"corte-{clip.id}"
     return FileResponse(clip.file_path, media_type="video/mp4", filename=f"{slug}.mp4")
+
+
+def _load(session: Session, clip_id: int) -> tuple[Clip, SourceVideo]:
+    clip = session.get(Clip, clip_id)
+    if clip is None:
+        raise HTTPException(404, "Corte não encontrado.")
+    video = session.get(SourceVideo, clip.source_video_id)
+    if video is None:
+        raise HTTPException(404, "Vídeo original não encontrado.")
+    return clip, video
+
+
+def _studio(session: Session, clip: Clip, video: SourceVideo) -> StudioOut:
+    job = pending_renders(session).get(clip.id or 0)
+    has_file = bool(video.file_path) and Path(video.file_path or "").exists()
+    return StudioOut(
+        clip=ClipOut.of(clip, video, rendering=job is not None),
+        source_video_url=f"/api/media/videos/{Path(video.file_path or '').name}"
+        if has_file
+        else None,
+        duration_s=video.duration_s,
+        transcript=[Segment(**seg) for seg in video.transcript or []],
+        render_job=JobOut.of(job) if job else None,
+        min_s=STUDIO_MIN_S,
+        max_s=STUDIO_MAX_S,
+    )
+
+
+@router.get("/{clip_id}/studio")
+def get_studio(clip_id: int, session: SessionDep) -> StudioOut:
+    clip, video = _load(session, clip_id)
+    return _studio(session, clip, video)
+
+
+def clean_hashtags(tags: list[str]) -> list[str]:
+    out: list[str] = []
+    for raw in tags:
+        for tag in re.split(r"[\s,]+", raw):
+            tag = tag.strip().lstrip("#")
+            if tag and tag.lower() not in {t.lower() for t in out}:
+                out.append(tag)
+    return out
+
+
+@router.patch("/{clip_id}")
+def edit_clip(clip_id: int, body: ClipEditIn, session: SessionDep) -> StudioOut:
+    """Save text right away; new start/end go to a render job (clip changes after it)."""
+    clip, video = _load(session, clip_id)
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(400, "O título não pode ficar vazio.")
+
+    start, end = round(body.start_s, 2), round(body.end_s, 2)
+    times_changed = abs(start - clip.start_s) > 0.05 or abs(end - clip.end_s) > 0.05
+    if times_changed:
+        limit = video.duration_s or float("inf")
+        if start < 0 or end > limit + 0.5 or end <= start:
+            raise HTTPException(
+                400, "Início e fim precisam estar dentro do vídeo, com o fim depois do início."
+            )
+        if not STUDIO_MIN_S <= end - start <= STUDIO_MAX_S:
+            raise HTTPException(
+                400, f"O corte precisa ter entre {STUDIO_MIN_S:.0f} e {STUDIO_MAX_S:.0f} segundos."
+            )
+        if clip.id in pending_renders(session):
+            raise HTTPException(409, "Esse corte já está renderizando. Espere terminar.")
+
+    clip.title = title
+    clip.description = body.description.strip()
+    clip.hashtags = clean_hashtags(body.hashtags)
+    session.add(clip)
+    session.commit()
+    if times_changed:
+        queue.enqueue(
+            session,
+            RENDER_CLIP,
+            {"clip_id": clip.id, "start_s": start, "end_s": min(end, video.duration_s or end)},
+        )
+    session.refresh(clip)
+    return _studio(session, clip, video)

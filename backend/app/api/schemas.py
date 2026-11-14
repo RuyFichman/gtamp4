@@ -51,10 +51,11 @@ class ClipOut(_UtcModel):
     account_id: int | None
     post_url: str | None
     posted_at: datetime | None
+    rendering: bool = False  # a Studio re-render is queued/running
     source: SourceOut
 
     @classmethod
-    def of(cls, c: Clip, v: SourceVideo) -> "ClipOut":
+    def of(cls, c: Clip, v: SourceVideo, rendering: bool = False) -> "ClipOut":
         return cls(
             id=c.id or 0,
             title=c.title,
@@ -70,6 +71,7 @@ class ClipOut(_UtcModel):
             account_id=c.account_id,
             post_url=c.post_url,
             posted_at=c.posted_at,
+            rendering=rendering,
             source=SourceOut.of(v),
         )
 
@@ -141,3 +143,27 @@ class AccountOut(_UtcModel):
             posted_count=posted_count,
             created_at=a.created_at,
         )
+
+
+class Segment(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
+class StudioOut(_UtcModel):
+    clip: ClipOut
+    source_video_url: str | None
+    duration_s: float | None
+    transcript: list[Segment]
+    render_job: JobOut | None
+    min_s: float
+    max_s: float
+
+
+class ClipEditIn(BaseModel):
+    title: str
+    description: str
+    hashtags: list[str]
+    start_s: float
+    end_s: float

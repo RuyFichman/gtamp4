@@ -7,9 +7,10 @@ type Props = {
   clip: Clip
   onStatus: (id: number, status: ClipStatus) => void
   onSource: (source: Source) => void
+  onStudio: (id: number) => void
 }
 
-export function ClipCard({ clip, onStatus, onSource }: Props) {
+export function ClipCard({ clip, onStatus, onSource, onStudio }: Props) {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { source } = clip
@@ -43,6 +44,9 @@ export function ClipCard({ clip, onStatus, onSource }: Props) {
 
       <div className="flex flex-1 flex-col gap-2 p-3 text-xs">
         <h3 className="text-sm font-semibold leading-snug">{clip.title}</h3>
+        {clip.rendering && (
+          <p className="text-amber-300">Renderizando nova versão no Estúdio…</p>
+        )}
 
         <div className="space-y-0.5 text-zinc-400">
           <p className="line-clamp-2" title={source.title}>
@@ -99,9 +103,9 @@ export function ClipCard({ clip, onStatus, onSource }: Props) {
             Recusar
           </button>
           <button
-            disabled
-            title="Em breve"
-            className="rounded border border-white/20 py-1.5 opacity-40"
+            onClick={() => onStudio(clip.id)}
+            title="Ajustar início/fim e texto"
+            className="rounded border border-white/20 py-1.5 hover:bg-white/10"
           >
             Estúdio
           </button>

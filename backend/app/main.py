@@ -41,3 +41,5 @@ for router in (
 ):
     app.include_router(router)
 app.mount("/api/media/clips", StaticFiles(directory=settings.clips_dir), name="clips")
+# originals, for the Studio player (StaticFiles serves byte ranges, so seeking works)
+app.mount("/api/media/videos", StaticFiles(directory=settings.videos_dir), name="videos")

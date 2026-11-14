@@ -46,7 +46,28 @@ export type Clip = {
   account_id: number | null
   post_url: string | null
   posted_at: string | null
+  rendering: boolean
   source: Source
+}
+
+export type Segment = { start: number; end: number; text: string }
+
+export type Studio = {
+  clip: Clip
+  source_video_url: string | null
+  duration_s: number | null
+  transcript: Segment[]
+  render_job: Job | null
+  min_s: number
+  max_s: number
+}
+
+export type ClipEdit = {
+  title: string
+  description: string
+  hashtags: string[]
+  start_s: number
+  end_s: number
 }
 
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'outra'

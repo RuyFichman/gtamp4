@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AddVideoForm } from '../components/AddVideoForm'
 import { ClipCard } from '../components/ClipCard'
 import { JobList } from '../components/JobList'
+import { StudioModal } from '../components/StudioModal'
 import { api } from '../lib/api'
 import type { Clip, ClipSort, ClipStatus, Job, Source } from '../lib/types'
 
@@ -12,6 +13,7 @@ export function ApprovePage({ active, onCountChange }: Props) {
   const [clips, setClips] = useState<Clip[]>([])
   const [sort, setSort] = useState<ClipSort>('potential')
   const doneIds = useRef(new Set<number>())
+  const [studioId, setStudioId] = useState<number | null>(null)
 
   const loadClips = useCallback(() => {
     api.clips('pending_review', sort).then(setClips).catch(() => {})
@@ -88,11 +90,16 @@ export function ApprovePage({ active, onCountChange }: Props) {
                 clip={clip}
                 onStatus={changeStatus}
                 onSource={updateSource}
+                onStudio={setStudioId}
               />
             ))}
           </div>
         )}
       </section>
+
+      {studioId != null && (
+        <StudioModal clipId={studioId} onClose={() => setStudioId(null)} onSaved={loadClips} />
+      )}
     </div>
   )
 }

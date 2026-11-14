@@ -33,7 +33,7 @@ _HINTS = [
 
 def explain_error(message: str) -> str:
     """Prefix a raw error with a pt-BR, actionable hint when we recognise it."""
-    lower = message.lower()
+    lower = message.lower().replace("’", "'")  # YouTube uses a curly apostrophe
     for needle, hint in _HINTS:
         if needle in lower:
             return f"{hint}\n\n{message}"

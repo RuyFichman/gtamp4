@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from app.config import get_settings
 from app.jobs import queue
 from app.jobs.worker import handler
-from app.models import Clip, FrameTemplate, Job, SourceVideo, utcnow
+from app.models import Clip, FrameTemplate, Job, JobStatus, SourceVideo, utcnow
 from app.pipeline import cut, download, energy, score, transcribe
 
 PROCESS_VIDEO = "process_video"
@@ -105,3 +105,58 @@ def process_video(session: Session, job: Job) -> None:
         clip.file_path = str(dst)
         session.add(clip)
         session.commit()
+
+
+RENDER_CLIP = "render_clip"
+STUDIO_MIN_S = 3.0
+STUDIO_MAX_S = 180.0
+
+
+def pending_renders(session: Session) -> dict[int, Job]:
+    """Studio re-renders not finished yet, by clip id."""
+    jobs = session.exec(
+        select(Job).where(
+            Job.kind == RENDER_CLIP,
+            col(Job.status).in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+        )
+    ).all()
+    return {job.payload["clip_id"]: job for job in jobs}
+
+
+def studio_clip_path(youtube_id: str, clip_id: int, start: float, end: float) -> Path:
+    # clip id in the name: an edited clip never collides with another clip's file
+    return get_settings().clips_dir / f"{youtube_id}_{clip_id}_{start:.1f}-{end:.1f}.mp4"
+
+
+@handler(RENDER_CLIP)
+def render_clip(session: Session, job: Job) -> None:
+    """Studio: re-cut a clip with new start/end. The clip only changes after a good render."""
+    clip = session.get(Clip, job.payload["clip_id"])
+    if clip is None:
+        raise RuntimeError("Esse corte não existe mais.")
+    video = session.get(SourceVideo, clip.source_video_id)
+    if video is None:
+        raise RuntimeError("O vídeo original desse corte não está no banco.")
+    start, end = float(job.payload["start_s"]), float(job.payload["end_s"])
+    queue.update(session, job, payload={**job.payload, "title": f"Estúdio: {clip.title}"})
+
+    src = Path(video.file_path) if video.file_path else None
+    if src is None or not src.exists():
+        _step(session, job, 0.1, "Baixando o vídeo original de novo")
+        src = download.download_video(video.url, get_settings().videos_dir, video.youtube_id)
+        video.file_path = str(src)
+        session.add(video)
+        session.commit()
+
+    _step(session, job, 0.4, "Renderizando")
+    dst = studio_clip_path(video.youtube_id, clip.id or 0, start, end)
+    cut.render_clip(src, dst, start, end, _default_frame(session))
+
+    old = Path(clip.file_path) if clip.file_path else None
+    clip.start_s, clip.end_s, clip.file_path = start, end, str(dst)
+    session.add(clip)
+    session.commit()
+    if old and old != dst and old.exists():
+        still_used = session.exec(select(Clip.id).where(Clip.file_path == str(old))).first()
+        if still_used is None:
+            old.unlink(missing_ok=True)
