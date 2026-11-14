@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+
+body {
+  @apply min-h-screen bg-gradient-to-br from-zinc-950 via-indigo-950 to-purple-900 text-zinc-100 antialiased;
+}

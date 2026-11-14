@@ -1,0 +1,30 @@
+[project]
+name = "gtamp4-backend"
+version = "0.1.0"
+description = "Local GTA 6 YouTube clipper - API, job worker and video pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=2.8.0",
+    "apscheduler>=3.11.3",
+    "fastapi[standard]>=0.163.0",
+    "pydantic-settings>=2.16.3",
+    "sqlmodel>=0.0.50",
+    "yt-dlp>=2026.10.26",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

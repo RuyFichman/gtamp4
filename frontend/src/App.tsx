@@ -1,0 +1,52 @@
+import { useState } from 'react'
+import { StatusBar } from './components/StatusBar'
+
+const TABS = [
+  'Painel',
+  'Aprovar',
+  'Postagem',
+  'Contas',
+  'Aquecimento',
+  'Radar',
+  'Moldura',
+  'Ajustes',
+] as const
+type Tab = (typeof TABS)[number]
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>('Aprovar')
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="bg-gradient-to-r from-orange-400 to-pink-500 bg-clip-text text-3xl font-bold text-transparent">
+            gtamp4
+          </h1>
+          <p className="text-sm text-zinc-400">Cortes de GTA 6 para TikTok e Instagram</p>
+        </div>
+        <StatusBar />
+      </header>
+
+      <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-white/10">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition ${
+              tab === t
+                ? 'border-b-2 border-pink-500 text-pink-400'
+                : 'text-zinc-400 hover:text-zinc-100'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </nav>
+
+      <main className="mt-6">
+        <p className="text-zinc-400">Aba “{tab}” em construção.</p>
+      </main>
+    </div>
+  )
+}
