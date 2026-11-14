@@ -77,7 +77,7 @@ gtamp4/
 | **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, estúdio, baixar) |
 | **Postagem** | Cortes aprovados aguardando postagem manual: baixar vídeo, copiar título/descrição/hashtags, escolher a conta e marcar como "postado" (com link do post, opcional) |
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
-| **Aquecimento** | Checklist **manual** de aquecimento de contas novas (não automatizar, ver Regras) |
+| **Aquecimento** | Checklist **manual** de 14 dias por conta (`app/warmup.py`: 3 fases, tarefas diárias e "uma vez", tabela `warmupcheck`, dia local da máquina). Só registra o que o usuário marcou; nunca automatizar (ver Regras) |
 | **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo configurável |
 | **Moldura** | Templates de overlay (PNG) e layout 9:16 |
 | **Estúdio** | Ajuste fino de um corte: início/fim, título, descrição; re-renderiza |
@@ -189,6 +189,6 @@ npx tsc --noEmit   # typecheck
 2. ~~Aba Aprovar com cards~~ feito.
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
-5. ~~Estúdio~~, ~~Painel~~ e ~~Ajustes~~ feitos. Faltam: Aquecimento, Moldura, zoom do Estúdio.
+5. ~~Estúdio~~, ~~Painel~~, ~~Ajustes~~ e ~~Aquecimento~~ feitos. Faltam: Moldura, zoom do Estúdio.
 
 Itens adiados: ver `docs/BACKLOG.md`.

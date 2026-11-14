@@ -18,6 +18,7 @@ import type {
   Source,
   Stats,
   Studio,
+  Warmup,
 } from './types'
 
 /** FastAPI sends a string, or a list of validation errors (422). */
@@ -50,6 +51,11 @@ const post = <T>(path: string, body?: unknown) =>
 export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
+  warmup: () => request<Warmup[]>('/warmup'),
+  startWarmup: (accountId: number) => post<Warmup>(`/warmup/${accountId}/start`),
+  stopWarmup: (accountId: number) => post<Warmup>(`/warmup/${accountId}/stop`),
+  checkWarmup: (accountId: number, taskKey: string, done: boolean) =>
+    post<Warmup>(`/warmup/${accountId}/check`, { task_key: taskKey, done }),
   settings: () => request<AppSettings>('/settings'),
   saveSettings: (config: AppConfig) =>
     request<AppSettings>('/settings', { method: 'PUT', body: JSON.stringify(config) }),

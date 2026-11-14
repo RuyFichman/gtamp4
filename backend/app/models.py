@@ -1,7 +1,8 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import JSON, Column, Field, SQLModel
 
 
@@ -76,6 +77,19 @@ class Account(SQLModel, table=True):
     handle: str
     name: str = ""
     notes: str = ""
+    warmup_started_on: date | None = None  # local date; None = not warming up
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class WarmupCheck(SQLModel, table=True):
+    """One ticked item of the manual warm-up checklist (the app never touches the account)."""
+
+    __table_args__ = (UniqueConstraint("account_id", "day", "task_key"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    account_id: int = Field(foreign_key="account.id", index=True)
+    day: date
+    task_key: str
     created_at: datetime = Field(default_factory=utcnow)
 
 

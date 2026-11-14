@@ -5,7 +5,7 @@ from sqlmodel import Session, col, func, select
 
 from app.api.schemas import AccountIn, AccountOut
 from app.db import get_session
-from app.models import Account, Clip, ClipStatus
+from app.models import Account, Clip, ClipStatus, WarmupCheck
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -63,5 +63,7 @@ def delete_account(account_id: int, session: SessionDep) -> None:
     for clip in session.exec(select(Clip).where(Clip.account_id == account_id)).all():
         clip.account_id = None
         session.add(clip)
+    for check in session.exec(select(WarmupCheck).where(WarmupCheck.account_id == account_id)):
+        session.delete(check)
     session.delete(account)
     session.commit()

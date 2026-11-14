@@ -6,6 +6,7 @@ import { ApprovePage } from './pages/ApprovePage'
 import { PostPage } from './pages/PostPage'
 import { RadarPage } from './pages/RadarPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { WarmupPage } from './pages/WarmupPage'
 
 const TABS = [
   'Painel',
@@ -18,7 +19,7 @@ const TABS = [
   'Ajustes',
 ] as const
 type Tab = (typeof TABS)[number]
-const READY: Tab[] = ['Painel', 'Aprovar', 'Postagem', 'Contas', 'Radar', 'Ajustes']
+const READY: Tab[] = ['Painel', 'Aprovar', 'Postagem', 'Contas', 'Aquecimento', 'Radar', 'Ajustes']
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Aprovar')
@@ -64,6 +65,7 @@ export default function App() {
         {tab === 'Painel' && <DashboardPage onNavigate={setTab} />}
         {tab === 'Postagem' && <PostPage />}
         {tab === 'Contas' && <AccountsPage />}
+        {tab === 'Aquecimento' && <WarmupPage onOpenAccounts={() => setTab('Contas')} />}
         {tab === 'Radar' && <RadarPage />}
         {tab === 'Ajustes' && <SettingsPage onOpenRadar={() => setTab('Radar')} />}
         {!READY.includes(tab) && <p className="text-zinc-400">Aba “{tab}” em construção.</p>}

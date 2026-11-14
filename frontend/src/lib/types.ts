@@ -174,3 +174,19 @@ export type AppSettings = {
 }
 
 export type CleanupPreview = { files: number; bytes: number; blocked: string | null }
+
+export type WarmupTask = { key: string; text: string; once: boolean; done: boolean }
+export type WarmupDay = { date: string; day_number: number; done: number; total: number }
+
+export type Warmup = {
+  account_id: number
+  handle: string
+  platform: string
+  started_on: string | null
+  day_number: number | null
+  finished: boolean
+  phase_title: string | null
+  phase_tip: string | null
+  tasks: WarmupTask[]
+  days: WarmupDay[]
+}
