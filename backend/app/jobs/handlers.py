@@ -143,6 +143,12 @@ def render_clip(session: Session, job: Job) -> None:
     if video is None:
         raise RuntimeError("O vídeo original desse corte não está no banco.")
     start, end = float(job.payload["start_s"]), float(job.payload["end_s"])
+    p = job.payload  # framing keys are optional (e.g. Moldura re-render keeps the clip's)
+    framing = cut.Framing(
+        float(p.get("zoom", clip.zoom)),
+        float(p.get("pan_x", clip.pan_x)),
+        float(p.get("pan_y", clip.pan_y)),
+    )
     queue.update(session, job, payload={**job.payload, "title": f"Estúdio: {clip.title}"})
 
     src = Path(video.file_path) if video.file_path else None
@@ -159,10 +165,11 @@ def render_clip(session: Session, job: Job) -> None:
         # same times (e.g. new frame): never overwrite the file the user may be watching
         dst = dst.with_name(f"{dst.stem}_v{job.id}{dst.suffix}")
     encoder = get_app_config(session).video_encoder
-    cut.render_clip(src, dst, start, end, _default_frame(session), encoder)
+    cut.render_clip(src, dst, start, end, _default_frame(session), encoder, framing)
 
     old = Path(clip.file_path) if clip.file_path else None
     clip.start_s, clip.end_s, clip.file_path = start, end, str(dst)
+    clip.zoom, clip.pan_x, clip.pan_y = framing.zoom, framing.pan_x, framing.pan_y
     session.add(clip)
     session.commit()
     if old and old != dst and old.exists():

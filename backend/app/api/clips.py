@@ -6,7 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlmodel import Session, col, select
 
-from app.api.schemas import ClipEditIn, ClipOut, ClipStatusIn, JobOut, Segment, StudioOut
+from app.api.schemas import (
+    AutoFrameOut,
+    ClipEditIn,
+    ClipOut,
+    ClipStatusIn,
+    JobOut,
+    Segment,
+    StudioOut,
+)
 from app.db import get_session
 from app.jobs import queue
 from app.jobs.handlers import (
@@ -15,7 +23,10 @@ from app.jobs.handlers import (
     STUDIO_MIN_S,
     pending_renders,
 )
-from app.models import Account, Clip, ClipStatus, SourceVideo, utcnow
+from app.models import Account, Clip, ClipStatus, FrameTemplate, SourceVideo, utcnow
+from app.pipeline import framing as framing_detect
+from app.pipeline.cut import Framing
+from app.pipeline.proc import CommandError
 
 router = APIRouter(prefix="/api/clips", tags=["clips"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -100,7 +111,13 @@ def _studio(session: Session, clip: Clip, video: SourceVideo) -> StudioOut:
         render_job=JobOut.of(job) if job else None,
         min_s=STUDIO_MIN_S,
         max_s=STUDIO_MAX_S,
+        frame_url=_frame_url(session),
     )
+
+
+def _frame_url(session: Session) -> str | None:
+    frame = session.exec(select(FrameTemplate).where(FrameTemplate.is_default)).first()
+    return f"/api/media/frames/{Path(frame.overlay_path).name}" if frame else None
 
 
 @router.get("/{clip_id}/studio")
@@ -129,6 +146,8 @@ def edit_clip(clip_id: int, body: ClipEditIn, session: SessionDep) -> StudioOut:
 
     start, end = round(body.start_s, 2), round(body.end_s, 2)
     times_changed = abs(start - clip.start_s) > 0.05 or abs(end - clip.end_s) > 0.05
+    framing = Framing(round(body.zoom, 2), round(body.pan_x, 3), round(body.pan_y, 3))
+    framing_changed = framing != Framing(clip.zoom, clip.pan_x, clip.pan_y)
     if times_changed:
         limit = video.duration_s or float("inf")
         if start < 0 or end > limit + 0.5 or end <= start:
@@ -139,19 +158,54 @@ def edit_clip(clip_id: int, body: ClipEditIn, session: SessionDep) -> StudioOut:
             raise HTTPException(
                 400, f"O corte precisa ter entre {STUDIO_MIN_S:.0f} e {STUDIO_MAX_S:.0f} segundos."
             )
-        if clip.id in pending_renders(session):
-            raise HTTPException(409, "Esse corte já está renderizando. Espere terminar.")
+    needs_render = times_changed or framing_changed
+    if needs_render and clip.id in pending_renders(session):
+        raise HTTPException(409, "Esse corte já está renderizando. Espere terminar.")
 
     clip.title = title
     clip.description = body.description.strip()
     clip.hashtags = clean_hashtags(body.hashtags)
     session.add(clip)
     session.commit()
-    if times_changed:
-        queue.enqueue(
-            session,
-            RENDER_CLIP,
-            {"clip_id": clip.id, "start_s": start, "end_s": min(end, video.duration_s or end)},
-        )
+    if needs_render:
+        if not times_changed:
+            start, end = clip.start_s, clip.end_s
+        payload = {
+            "clip_id": clip.id,
+            "start_s": start,
+            "end_s": min(end, video.duration_s or end),
+            "zoom": framing.zoom,
+            "pan_x": framing.pan_x,
+            "pan_y": framing.pan_y,
+        }
+        queue.enqueue(session, RENDER_CLIP, payload)
     session.refresh(clip)
     return _studio(session, clip, video)
+
+
+@router.get("/{clip_id}/autoframe")
+def autoframe(clip_id: int, session: SessionDep, start_s: float, end_s: float) -> AutoFrameOut:
+    """Suggest zoom/pan from black bars in the original (ffmpeg cropdetect)."""
+    _clip, video = _load(session, clip_id)
+    src = Path(video.file_path or "")
+    if not video.file_path or not src.exists():
+        raise HTTPException(409, "O vídeo original não está no disco; ajuste o zoom na mão.")
+    try:
+        width, height = framing_detect.probe_size(src)
+        box = framing_detect.detect_content(src, start_s, end_s)
+    except CommandError as exc:
+        raise HTTPException(500, f"Não consegui analisar o vídeo: {exc}") from exc
+    suggestion = framing_detect.suggest(width, height, box) if box else None
+    if suggestion is None:
+        return AutoFrameOut(
+            found=False,
+            message="Não achei barras pretas nas laterais. Se as bordas são desfocadas, "
+            "ajuste o zoom na mão.",
+        )
+    return AutoFrameOut(
+        found=True,
+        zoom=suggestion.zoom,
+        pan_x=suggestion.pan_x,
+        pan_y=suggestion.pan_y,
+        message=f"Área com imagem encontrada: zoom {suggestion.zoom:.2f}x.",
+    )

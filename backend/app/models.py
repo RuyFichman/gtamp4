@@ -51,6 +51,10 @@ class Clip(SQLModel, table=True):
     potential: int = 0
     potential_reason: str = ""
     file_path: str | None = None
+    # Studio framing of the middle video (see pipeline/cut.Framing)
+    zoom: float = 1.0
+    pan_x: float = 0.0
+    pan_y: float = 0.0
     status: ClipStatus = Field(default=ClipStatus.PENDING_REVIEW, index=True)
     account_id: int | None = Field(default=None, foreign_key="account.id")
     post_url: str | None = None

@@ -1,5 +1,6 @@
 import type {
   Account,
+  AutoFrame,
   AppConfig,
   AppSettings,
   CleanupPreview,
@@ -53,6 +54,8 @@ const post = <T>(path: string, body?: unknown) =>
 export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
+  autoframe: (clipId: number, start: number, end: number) =>
+    request<AutoFrame>(`/clips/${clipId}/autoframe?start_s=${start}&end_s=${end}`),
   frames: () => request<Frames>('/frames'),
   uploadFrame: (name: string, file: File) => {
     const body = new FormData()

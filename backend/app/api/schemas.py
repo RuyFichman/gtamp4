@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 
 from app.models import Account, Clip, ClipStatus, Job, JobStatus, SourceVideo
 
@@ -46,6 +46,9 @@ class ClipOut(_UtcModel):
     status: ClipStatus
     start_s: float
     end_s: float
+    zoom: float = 1.0
+    pan_x: float = 0.0
+    pan_y: float = 0.0
     video_url: str | None
     created_at: datetime
     account_id: int | None
@@ -66,6 +69,9 @@ class ClipOut(_UtcModel):
             status=c.status,
             start_s=c.start_s,
             end_s=c.end_s,
+            zoom=c.zoom,
+            pan_x=c.pan_x,
+            pan_y=c.pan_y,
             video_url=f"/api/media/clips/{Path(c.file_path).name}" if c.file_path else None,
             created_at=c.created_at,
             account_id=c.account_id,
@@ -159,6 +165,7 @@ class StudioOut(_UtcModel):
     render_job: JobOut | None
     min_s: float
     max_s: float
+    frame_url: str | None = None  # frame in use, for the framing preview
 
 
 class ClipEditIn(BaseModel):
@@ -167,3 +174,14 @@ class ClipEditIn(BaseModel):
     hashtags: list[str]
     start_s: float
     end_s: float
+    zoom: float = Field(1.0, ge=1.0, le=3.0)
+    pan_x: float = Field(0.0, ge=-1.0, le=1.0)
+    pan_y: float = Field(0.0, ge=-1.0, le=1.0)
+
+
+class AutoFrameOut(BaseModel):
+    found: bool
+    zoom: float = 1.0
+    pan_x: float = 0.0
+    pan_y: float = 0.0
+    message: str

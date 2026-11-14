@@ -1,14 +1,27 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../lib/api'
 import { formatTime } from '../lib/format'
-import type { Studio } from '../lib/types'
+import type { Framing, Studio } from '../lib/types'
+import { FramingControls } from './FramingControls'
+import { FramingPreview } from './FramingPreview'
 import { ModalShell as Shell } from './ModalShell'
 import { TimeField } from './TimeField'
 import { TranscriptPicker } from './TranscriptPicker'
 
 type Props = { clipId: number; onClose: () => void; onSaved: () => void }
 
-type Form = { title: string; description: string; hashtags: string; start: number; end: number }
+type Form = Framing & {
+  title: string
+  description: string
+  hashtags: string
+  start: number
+  end: number
+}
+
+const sameFraming = (a: Framing, b: Framing) =>
+  Math.abs(a.zoom - b.zoom) < 0.005 &&
+  Math.abs(a.pan_x - b.pan_x) < 0.0005 &&
+  Math.abs(a.pan_y - b.pan_y) < 0.0005
 
 const INPUT = 'w-full rounded border border-white/15 bg-black/30 px-2 py-1.5 text-sm'
 
@@ -18,7 +31,9 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const requested = useRef<{ start: number; end: number } | null>(null)
+  const requested = useRef<(Framing & { start: number; end: number }) | null>(null)
+  const [autoBusy, setAutoBusy] = useState(false)
+  const [autoMessage, setAutoMessage] = useState<string | null>(null)
   const player = useRef<HTMLVideoElement>(null)
   const stopAt = useRef<number | null>(null)
 
@@ -30,6 +45,9 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
       hashtags: s.clip.hashtags.map((h) => `#${h}`).join(' '),
       start: s.clip.start_s,
       end: s.clip.end_s,
+      zoom: s.clip.zoom,
+      pan_x: s.clip.pan_x,
+      pan_y: s.clip.pan_y,
     })
   }, [])
 
@@ -54,7 +72,9 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
           requested.current = null
           const ok =
             !want ||
-            (Math.abs(s.clip.start_s - want.start) < 0.06 && Math.abs(s.clip.end_s - want.end) < 0.06)
+            (Math.abs(s.clip.start_s - want.start) < 0.06 &&
+              Math.abs(s.clip.end_s - want.end) < 0.06 &&
+              sameFraming(s.clip, want))
           if (ok) {
             setNotice('Nova versão pronta.')
             setForm((f) => f && { ...f, start: s.clip.start_s, end: s.clip.end_s })
@@ -86,6 +106,8 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
   const length = form.end - form.start
   const timesChanged =
     Math.abs(form.start - clip.start_s) > 0.05 || Math.abs(form.end - clip.end_s) > 0.05
+  const framingChanged = !sameFraming(form, clip)
+  const needsRender = timesChanged || framingChanged
   const maxEnd = studio.duration_s ?? Infinity
   const timeError =
     form.end <= form.start
@@ -113,6 +135,21 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
     return Math.round((player.current?.currentTime ?? 0) * 10) / 10
   }
 
+  async function autoFrame() {
+    if (!form) return
+    setAutoBusy(true)
+    setAutoMessage(null)
+    try {
+      const r = await api.autoframe(clipId, form.start, form.end)
+      setAutoMessage(r.message)
+      if (r.found) set({ zoom: r.zoom, pan_x: r.pan_x, pan_y: r.pan_y })
+    } catch (err) {
+      setAutoMessage((err as Error).message)
+    } finally {
+      setAutoBusy(false)
+    }
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault()
     if (!form || (timesChanged && timeError)) return
@@ -126,8 +163,14 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
         hashtags: [form.hashtags],
         start_s: form.start,
         end_s: form.end,
+        zoom: form.zoom,
+        pan_x: form.pan_x,
+        pan_y: form.pan_y,
       })
-      if (s.render_job) requested.current = { start: form.start, end: form.end }
+      if (s.render_job) {
+        const { start, end, zoom, pan_x, pan_y } = form
+        requested.current = { start, end, zoom, pan_x, pan_y }
+      }
       setStudio(s)
       setForm((f) => f && { ...f, hashtags: s.clip.hashtags.map((h) => `#${h}`).join(' ') })
       setNotice(s.render_job ? null : 'Texto salvo.')
@@ -196,6 +239,27 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
               >
                 Ouvir o final
               </button>
+            </div>
+          </div>
+
+          <div className="space-y-2 rounded border border-white/10 bg-white/5 p-3">
+            <p className="text-sm font-semibold">Enquadramento</p>
+            <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
+              {studio.source_video_url && (
+                <FramingPreview
+                  videoUrl={studio.source_video_url}
+                  time={form.start + Math.min(1, length / 2)}
+                  framing={form}
+                  frameUrl={studio.frame_url}
+                />
+              )}
+              <FramingControls
+                value={form}
+                onChange={(f) => set(f)}
+                onAuto={studio.source_video_url ? autoFrame : null}
+                autoBusy={autoBusy}
+                autoMessage={autoMessage}
+              />
             </div>
           </div>
 
@@ -272,12 +336,12 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
           {error && <p className="text-sm text-orange-400">{error}</p>}
           {notice && <p className="text-sm text-emerald-400">{notice}</p>}
           <button
-            disabled={saving || (timesChanged && (!!timeError || rendering))}
+            disabled={saving || (needsRender && ((timesChanged && !!timeError) || rendering))}
             className="w-full rounded bg-pink-500 py-2 font-semibold text-white hover:bg-pink-400 disabled:opacity-50"
           >
-            {saving ? 'Salvando…' : timesChanged ? 'Salvar e renderizar de novo' : 'Salvar texto'}
+            {saving ? 'Salvando…' : needsRender ? 'Salvar e renderizar de novo' : 'Salvar texto'}
           </button>
-          {timesChanged && !timeError && (
+          {needsRender && !(timesChanged && timeError) && (
             <p className="text-xs text-zinc-500">
               A versão atual continua valendo até a nova ficar pronta.
             </p>

@@ -85,3 +85,22 @@ def test_cut_command_with_frame_and_encoder() -> None:
     assert "libx264" in cmd
     no_frame = " ".join(build_cut_command(Path("a"), Path("b"), 0, 20, None, "h264_amf"))
     assert "[1:v]" not in no_frame and "h264_amf" in no_frame
+
+
+def test_framing_filter_and_suggestion() -> None:
+    from app.pipeline.cut import Framing, foreground_filter
+    from app.pipeline.framing import suggest
+
+    plain = " ".join(build_cut_command(Path("a"), Path("b"), 0, 20, None, "libx264"))
+    assert "[fg]scale=1080:-2[fgs]" in plain
+    zoomed = foreground_filter(Framing(2.0, 0.5, 0))
+    assert zoomed.startswith("scale=2160:-2,crop=w='min(iw,1080)'")
+    assert ":x='(iw-ow)/2*1.5000'" in zoomed
+
+    # phone video (608x1080) centered in a 1920x1080 frame with black bars
+    f = suggest(1920, 1080, (608, 1080, 656, 0))
+    assert f is not None and f.zoom == 3.0 and abs(f.pan_x) < 0.01 and f.pan_y == 0
+    # content pushed to the left: pan goes negative
+    left = suggest(1920, 1080, (608, 1080, 0, 0))
+    assert left is not None and left.pan_x == -1.0
+    assert suggest(1920, 1080, (1920, 1080, 0, 0)) is None  # no bars

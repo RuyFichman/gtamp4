@@ -110,6 +110,7 @@ Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 - Abre num painel (`StudioModal`) pelo botão "Estúdio" dos cards (Aprovar e Postagem). Não é uma aba.
 - `GET /api/clips/{id}/studio`: corte, vídeo original (`/api/media/videos/`, com Range, então dá para pular no player), transcrição e o job de render pendente.
 - `PATCH /api/clips/{id}`: o texto é salvo na hora. Início/fim novos (3 a 180 s) viram um job `render_clip`; o `Clip` só muda depois do render dar certo. O arquivo novo se chama `{youtube_id}_{clip_id}_{start}-{end}.mp4` (com `_v{job_id}` se o nome repetir, ex.: só trocou a moldura); o antigo é apagado se nenhum outro corte usa. Um render por corte de cada vez (409).
+- **Enquadramento:** `Clip.zoom` (1–3) e `pan_x`/`pan_y` (-1..1) mudam só o vídeo do meio (`cut.Framing`, `foreground_filter`: escala para 1080·zoom e recorta na tela 1080x1920). Prévia em CSS com a mesma geometria (`FramingPreview`). "Automático" (`GET /api/clips/{id}/autoframe`, `pipeline/framing.py`) usa `cropdetect` e só acha barras pretas. Mudar só o enquadramento também gera `render_clip`; jobs sem as chaves de enquadramento mantêm o do corte.
 - Se o vídeo original foi apagado do disco, o job baixa de novo.
 
 ## Radar
@@ -189,6 +190,6 @@ npx tsc --noEmit   # typecheck
 2. ~~Aba Aprovar com cards~~ feito.
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
-5. ~~Estúdio~~, ~~Painel~~, ~~Ajustes~~, ~~Aquecimento~~ e ~~Moldura~~ feitos. Falta: zoom do Estúdio.
+5. ~~Estúdio~~ (com zoom/enquadramento), ~~Painel~~, ~~Ajustes~~, ~~Aquecimento~~ e ~~Moldura~~ feitos.
 
 Itens adiados: ver `docs/BACKLOG.md`.

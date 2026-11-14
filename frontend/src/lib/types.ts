@@ -41,6 +41,9 @@ export type Clip = {
   status: ClipStatus
   start_s: number
   end_s: number
+  zoom: number
+  pan_x: number
+  pan_y: number
   video_url: string | null
   created_at: string
   account_id: number | null
@@ -60,6 +63,7 @@ export type Studio = {
   render_job: Job | null
   min_s: number
   max_s: number
+  frame_url: string | null
 }
 
 export type ClipEdit = {
@@ -68,7 +72,14 @@ export type ClipEdit = {
   hashtags: string[]
   start_s: number
   end_s: number
+  zoom: number
+  pan_x: number
+  pan_y: number
 }
+
+export type Framing = { zoom: number; pan_x: number; pan_y: number }
+
+export type AutoFrame = Framing & { found: boolean; message: string }
 
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'outra'
 

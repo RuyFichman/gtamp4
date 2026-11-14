@@ -136,3 +136,16 @@ def test_render_job_updates_clip_and_removes_old_file(
 
 def test_clean_hashtags() -> None:
     assert clean_hashtags(["#a, b", "A", " #c "]) == ["a", "b", "c"]
+
+
+def test_framing_change_alone_queues_render(client: TestClient, engine: Engine) -> None:
+    with Session(engine) as s:
+        clip = s.exec(select(Clip)).one()
+        start, end = clip.start_s, clip.end_s
+    body = edit(start_s=start, end_s=end) | {"zoom": 2.0, "pan_x": -0.5}
+    out = client.patch("/api/clips/1", json=body).json()
+    assert out["render_job"] is not None
+    with Session(engine) as s:
+        job = s.exec(select(Job)).one()
+        assert job.payload["zoom"] == 2.0 and job.payload["start_s"] == start
+    assert client.patch("/api/clips/1", json=body | {"zoom": 5}).status_code == 422
