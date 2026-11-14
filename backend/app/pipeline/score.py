@@ -24,6 +24,8 @@ class ClipIdea(BaseModel):
 
 
 class ClipPlan(BaseModel):
+    # filled first so the model commits to the output language before writing any text
+    video_language: str
     clips: list[ClipIdea]
 
 
@@ -37,8 +39,10 @@ Regras para cada corte:
 - Prefira: revelações, notícias, opiniões fortes, polêmica, humor, reações e momentos de fala agitada.
   A coluna "energia" (0-9) indica volume da voz; energia alta costuma ser um bom sinal.
 - potential: nota de 0 a 100 do potencial de viralizar. Seja exigente; reserve 90+ para trechos excepcionais.
-- reason: uma frase curta explicando a nota.
-- title, description e hashtags SEMPRE no mesmo idioma falado no vídeo. Nunca traduza.
+- reason: uma frase curta explicando a nota, em português do Brasil (só o editor lê).
+- title, description e hashtags SEMPRE no idioma falado no vídeo, mesmo que estas instruções
+  estejam em português: vídeo em inglês → texto em inglês; em espanhol → espanhol. Nunca traduza.
+- video_language: preencha antes dos cortes com o código do idioma falado (ex.: "en", "pt").
 - title: curto e chamativo (até 70 caracteres), sem clickbait mentiroso.
 - description: 1-2 frases + chamada para seguir. hashtags: 3 a 6, sem o símbolo #.
 
@@ -86,6 +90,7 @@ def plan_with_claude(
     *,
     title: str,
     channel: str,
+    language: str | None,
     description: str,
     views: int | None,
     segments: list[Segment],
@@ -94,8 +99,14 @@ def plan_with_claude(
 ) -> list[ClipIdea]:
     settings = get_settings()
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    lang_line = (
+        f"Idioma falado no vídeo (YouTube): {language}. "
+        f"Escreva title, description e hashtags nesse idioma ({language}).\n"
+        if language
+        else "Idioma falado: descubra pela transcrição e escreva title/description nele.\n"
+    )
     user = (
-        f"Título: {title}\nCanal: {channel}\nViews: {views}\n"
+        f"{lang_line}Título: {title}\nCanal: {channel}\nViews: {views}\n"
         f"Descrição do vídeo:\n{description[:1500]}\n\n"
         f"Transcrição ([início-fim] em segundos):\n{format_transcript(segments, energy)}"
     )

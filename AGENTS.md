@@ -111,7 +111,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 
 - **Idioma:** títulos, descrições e hashtags são gerados **sempre no idioma original do vídeo**. Não traduzir.
 - **UI em português (pt-BR).** Código, nomes de variáveis, funções, tabelas e commits em **inglês**.
-- **Segredos** só no `.env` (raiz do backend). Nunca commitar `.env`, nunca logar chaves. Manter `.env.example` atualizado.
+- **Segredos** só no `.env` (raiz do repo ou `backend/.env`, que tem prioridade). Nunca commitar `.env`, nunca logar chaves. Manter `.env.example` atualizado.
 - **`data/` nunca é versionado.**
 - **Sem automação de aquecimento de contas** (curtir/rolar feed com bot). Viola os termos do TikTok/Instagram e causa ban. A aba Aquecimento é só checklist manual.
 - **Postagem é 100% manual (decisão do usuário).** Não implementar postagem automática de nenhum tipo: nem APIs oficiais, nem automação de navegador, nem agendamento que publique sozinho. O app apenas prepara o vídeo e o texto e registra o que o usuário marcou como postado.
@@ -147,6 +147,7 @@ npx tsc --noEmit   # typecheck
 - SQLModel exige datetimes **com fuso** (`utcnow()` de `app.models`); comparar com datetime "naive" dá erro 500.
 - yt-dlp precisa de runtime JS para o YouTube: usamos Node (`js_runtimes: {"node": {}}` em `pipeline/download.py`) e o pacote `yt-dlp[default]`.
 - Um terminal aberto antes de instalar o ffmpeg não o enxerga no PATH: abra um terminal novo.
+- O prompt da IA é em português; sem o idioma explícito, a IA escrevia títulos de vídeos em inglês em português. Por isso `plan_with_claude` recebe `language` e o `ClipPlan` tem `video_language` preenchido antes dos cortes. Só `reason` é em pt-BR. Não remova isso.
 
 ## Testes
 
@@ -162,9 +163,10 @@ npx tsc --noEmit   # typecheck
 
 ## Roadmap
 
-1. Colar link → baixar → transcrever → IA escolhe trechos → corte 9:16 com moldura.
-2. Aba Aprovar com cards.
+1. ~~Colar link → baixar → transcrever → IA escolhe trechos → corte 9:16~~ feito (moldura vai no item 5).
+2. ~~Aba Aprovar com cards~~ feito.
 3. Radar com coleta automática + atualização de views.
-4. Aba Postagem: fila manual (baixar, copiar texto, marcar como postado).
+4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
+5. Moldura (upload do PNG de overlay), Estúdio, Painel, Aquecimento, Ajustes.
 
 Itens adiados: ver `docs/BACKLOG.md`.

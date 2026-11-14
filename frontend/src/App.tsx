@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { StatusBar } from './components/StatusBar'
+import { AccountsPage } from './pages/AccountsPage'
 import { ApprovePage } from './pages/ApprovePage'
+import { PostPage } from './pages/PostPage'
 
 const TABS = [
   'Painel',
@@ -13,6 +15,7 @@ const TABS = [
   'Ajustes',
 ] as const
 type Tab = (typeof TABS)[number]
+const READY: Tab[] = ['Aprovar', 'Postagem', 'Contas']
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Aprovar')
@@ -52,9 +55,12 @@ export default function App() {
       <main className="mt-6">
         {/* kept mounted so polling and the pending badge keep working on other tabs */}
         <div hidden={tab !== 'Aprovar'}>
-          <ApprovePage onCountChange={setPending} />
+          <ApprovePage active={tab === 'Aprovar'} onCountChange={setPending} />
         </div>
-        {tab !== 'Aprovar' && <p className="text-zinc-400">Aba “{tab}” em construção.</p>}
+        {/* mounted on open so they always show fresh data */}
+        {tab === 'Postagem' && <PostPage />}
+        {tab === 'Contas' && <AccountsPage />}
+        {!READY.includes(tab) && <p className="text-zinc-400">Aba “{tab}” em construção.</p>}
       </main>
     </div>
   )

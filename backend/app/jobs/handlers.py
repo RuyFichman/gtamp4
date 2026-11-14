@@ -74,6 +74,7 @@ def process_video(session: Session, job: Job) -> None:
         ideas = score.plan_with_claude(
             title=video.title,
             channel=video.channel,
+            language=video.language,
             description=video.description,
             views=video.views,
             segments=segments,
@@ -92,16 +93,15 @@ def process_video(session: Session, job: Job) -> None:
         _step(session, job, 0.6 + 0.4 * (i - 1) / len(ideas), f"Cortando {i} de {len(ideas)}")
         dst = settings.clips_dir / f"{video.youtube_id}_{idea.start_s:.0f}-{idea.end_s:.0f}.mp4"
         cut.render_clip(path, dst, idea.start_s, idea.end_s, frame)
-        clip = Clip(
-            source_video_id=video.id or 0,
-            start_s=idea.start_s,
-            end_s=idea.end_s,
-            title=idea.title,
-            description=idea.description,
-            hashtags=idea.hashtags,
-            potential=idea.potential,
-            potential_reason=idea.reason,
-            file_path=str(dst),
+        # reprocessing the same video must not duplicate a clip (keeps its status)
+        clip = session.exec(select(Clip).where(Clip.file_path == str(dst))).first() or Clip(
+            source_video_id=video.id or 0, start_s=idea.start_s, end_s=idea.end_s
         )
+        clip.title = idea.title
+        clip.description = idea.description
+        clip.hashtags = idea.hashtags
+        clip.potential = idea.potential
+        clip.potential_reason = idea.reason
+        clip.file_path = str(dst)
         session.add(clip)
         session.commit()

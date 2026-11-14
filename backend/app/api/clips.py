@@ -8,7 +8,7 @@ from sqlmodel import Session, col, select
 
 from app.api.schemas import ClipOut, ClipStatusIn
 from app.db import get_session
-from app.models import Clip, ClipStatus, SourceVideo, utcnow
+from app.models import Account, Clip, ClipStatus, SourceVideo, utcnow
 
 router = APIRouter(prefix="/api/clips", tags=["clips"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -17,6 +17,7 @@ SORTS = {
     "potential": col(Clip.potential).desc(),
     "recent": col(Clip.id).desc(),
     "views": col(SourceVideo.views).desc(),
+    "posted": col(Clip.posted_at).desc(),
 }
 
 
@@ -24,7 +25,7 @@ SORTS = {
 def list_clips(
     session: SessionDep,
     status: ClipStatus = ClipStatus.PENDING_REVIEW,
-    sort: Literal["potential", "recent", "views"] = "potential",
+    sort: Literal["potential", "recent", "views", "posted"] = "potential",
 ) -> list[ClipOut]:
     rows = session.exec(
         select(Clip, SourceVideo)
@@ -40,8 +41,17 @@ def set_status(clip_id: int, body: ClipStatusIn, session: SessionDep) -> ClipOut
     clip = session.get(Clip, clip_id)
     if clip is None:
         raise HTTPException(404, "Corte não encontrado.")
+    if body.status == ClipStatus.POSTED:
+        if body.account_id is not None and session.get(Account, body.account_id) is None:
+            raise HTTPException(400, "Conta não encontrada. Atualize a página e escolha de novo.")
+        clip.account_id = body.account_id
+        clip.post_url = (body.post_url or "").strip() or None
+        clip.posted_at = utcnow()
+    else:
+        clip.account_id = None
+        clip.post_url = None
+        clip.posted_at = None
     clip.status = body.status
-    clip.posted_at = utcnow() if body.status == ClipStatus.POSTED else None
     session.add(clip)
     session.commit()
     session.refresh(clip)

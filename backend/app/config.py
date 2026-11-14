@@ -8,7 +8,10 @@ PROJECT_DIR = BACKEND_DIR.parent
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", extra="ignore")
+    # backend/.env wins over the repo-root .env when both exist
+    model_config = SettingsConfigDict(
+        env_file=(PROJECT_DIR / ".env", BACKEND_DIR / ".env"), extra="ignore"
+    )
 
     anthropic_api_key: str = ""
     model_triage: str = "claude-haiku-5-5"

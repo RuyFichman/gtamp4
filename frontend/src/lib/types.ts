@@ -20,7 +20,7 @@ export type Job = {
 }
 
 export type ClipStatus = 'pending_review' | 'approved' | 'rejected' | 'posted'
-export type ClipSort = 'potential' | 'recent' | 'views'
+export type ClipSort = 'potential' | 'recent' | 'views' | 'posted'
 
 export type Source = {
   id: number
@@ -43,5 +43,23 @@ export type Clip = {
   end_s: number
   video_url: string | null
   created_at: string
+  account_id: number | null
+  post_url: string | null
+  posted_at: string | null
   source: Source
+}
+
+export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'outra'
+
+export type AccountInput = {
+  platform: Platform
+  handle: string
+  name: string
+  notes: string
+}
+
+export type Account = AccountInput & {
+  id: number
+  posted_count: number
+  created_at: string
 }

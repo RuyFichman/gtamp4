@@ -13,3 +13,16 @@ export function formatDuration(seconds: number): string {
   const s = Math.round(seconds)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
+
+export const PLATFORM_LABEL: Record<string, string> = {
+  tiktok: 'TikTok',
+  instagram: 'Instagram',
+  youtube: 'YouTube Shorts',
+  outra: 'Outra',
+}
+
+/** Caption pasted into TikTok/Instagram: description + hashtags. */
+export function captionText(description: string, hashtags: string[]): string {
+  const tags = hashtags.map((h) => `#${h}`).join(' ')
+  return [description.trim(), tags].filter(Boolean).join('\n\n')
+}

@@ -1,4 +1,13 @@
-import type { Clip, ClipSort, ClipStatus, Health, Job, Source } from './types'
+import type {
+  Account,
+  AccountInput,
+  Clip,
+  ClipSort,
+  ClipStatus,
+  Health,
+  Job,
+  Source,
+} from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -25,5 +34,16 @@ export const api = {
   clips: (status: ClipStatus, sort: ClipSort) =>
     request<Clip[]>(`/clips?status=${status}&sort=${sort}`),
   setClipStatus: (id: number, status: ClipStatus) => post<Clip>(`/clips/${id}/status`, { status }),
+  markPosted: (id: number, accountId: number | null, postUrl: string) =>
+    post<Clip>(`/clips/${id}/status`, {
+      status: 'posted',
+      account_id: accountId,
+      post_url: postUrl,
+    }),
   clipDownloadUrl: (id: number) => `/api/clips/${id}/download`,
+  accounts: () => request<Account[]>('/accounts'),
+  createAccount: (data: AccountInput) => post<Account>('/accounts', data),
+  updateAccount: (id: number, data: AccountInput) =>
+    request<Account>(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteAccount: (id: number) => request<void>(`/accounts/${id}`, { method: 'DELETE' }),
 }

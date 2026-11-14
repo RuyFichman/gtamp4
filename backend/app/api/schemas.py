@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, field_serializer
 
-from app.models import Clip, ClipStatus, Job, JobStatus, SourceVideo
+from app.models import Account, Clip, ClipStatus, Job, JobStatus, SourceVideo
 
 
 class _UtcModel(BaseModel):
@@ -47,6 +48,9 @@ class ClipOut(_UtcModel):
     end_s: float
     video_url: str | None
     created_at: datetime
+    account_id: int | None
+    post_url: str | None
+    posted_at: datetime | None
     source: SourceOut
 
     @classmethod
@@ -63,6 +67,9 @@ class ClipOut(_UtcModel):
             end_s=c.end_s,
             video_url=f"/api/media/clips/{Path(c.file_path).name}" if c.file_path else None,
             created_at=c.created_at,
+            account_id=c.account_id,
+            post_url=c.post_url,
+            posted_at=c.posted_at,
             source=SourceOut.of(v),
         )
 
@@ -99,3 +106,38 @@ class AddVideoIn(BaseModel):
 
 class ClipStatusIn(BaseModel):
     status: ClipStatus
+    # only used when status == posted
+    account_id: int | None = None
+    post_url: str | None = None
+
+
+Platform = Literal["tiktok", "instagram", "youtube", "outra"]
+
+
+class AccountIn(BaseModel):
+    platform: Platform
+    handle: str
+    name: str = ""
+    notes: str = ""
+
+
+class AccountOut(_UtcModel):
+    id: int
+    platform: str
+    handle: str
+    name: str
+    notes: str
+    posted_count: int
+    created_at: datetime
+
+    @classmethod
+    def of(cls, a: Account, posted_count: int = 0) -> "AccountOut":
+        return cls(
+            id=a.id or 0,
+            platform=a.platform,
+            handle=a.handle,
+            name=a.name,
+            notes=a.notes,
+            posted_count=posted_count,
+            created_at=a.created_at,
+        )

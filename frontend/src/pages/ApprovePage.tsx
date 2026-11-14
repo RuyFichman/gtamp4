@@ -5,7 +5,9 @@ import { JobList } from '../components/JobList'
 import { api } from '../lib/api'
 import type { Clip, ClipSort, ClipStatus, Job, Source } from '../lib/types'
 
-export function ApprovePage({ onCountChange }: { onCountChange: (n: number) => void }) {
+type Props = { active: boolean; onCountChange: (n: number) => void }
+
+export function ApprovePage({ active, onCountChange }: Props) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [clips, setClips] = useState<Clip[]>([])
   const [sort, setSort] = useState<ClipSort>('potential')
@@ -28,7 +30,10 @@ export function ApprovePage({ onCountChange }: { onCountChange: (n: number) => v
       .catch(() => {})
   }, [loadClips])
 
-  useEffect(loadClips, [loadClips])
+  // reload on open: clips can come back from the Postagem tab ("Devolver")
+  useEffect(() => {
+    if (active) loadClips()
+  }, [active, loadClips])
   useEffect(() => {
     loadJobs()
     const id = setInterval(loadJobs, 2000)
