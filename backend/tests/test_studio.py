@@ -125,6 +125,14 @@ def test_render_job_updates_clip_and_removes_old_file(
         assert Path(clip.file_path or "").read_bytes() == b"new"
         assert not old_path.exists()
 
+        # same times again (new frame): a new file, the one being watched is kept until swapped
+        first = Path(clip.file_path or "")
+        job = queue.enqueue(s, handlers.RENDER_CLIP, {"clip_id": 1, "start_s": 5.0, "end_s": 25.0})
+        handlers.render_clip(s, job)
+        clip = s.exec(select(Clip)).one()
+        assert Path(clip.file_path or "").name == f"{first.stem}_v{job.id}.mp4"
+        assert not first.exists()
+
 
 def test_clean_hashtags() -> None:
     assert clean_hashtags(["#a, b", "A", " #c "]) == ["a", "b", "c"]

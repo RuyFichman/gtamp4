@@ -8,7 +8,18 @@ from fastapi.staticfiles import StaticFiles
 import app.jobs.handlers  # noqa: F401  (registers job handlers)
 import app.jobs.radar_jobs  # noqa: F401
 from app import scheduler
-from app.api import accounts, clips, jobs, radar, settings, stats, system, videos, warmup
+from app.api import (
+    accounts,
+    clips,
+    frames,
+    jobs,
+    radar,
+    settings,
+    stats,
+    system,
+    videos,
+    warmup,
+)
 from app.config import get_settings
 from app.db import init_db
 from app.jobs.worker import Worker
@@ -41,8 +52,10 @@ for router in (
     stats.router,
     settings.router,
     warmup.router,
+    frames.router,
 ):
     app.include_router(router)
 app.mount("/api/media/clips", StaticFiles(directory=config.clips_dir), name="clips")
 # originals, for the Studio player (StaticFiles serves byte ranges, so seeking works)
 app.mount("/api/media/videos", StaticFiles(directory=config.videos_dir), name="videos")
+app.mount("/api/media/frames", StaticFiles(directory=config.frames_dir), name="frames")

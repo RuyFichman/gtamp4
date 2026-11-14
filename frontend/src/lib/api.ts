@@ -8,6 +8,7 @@ import type {
   ClipEdit,
   ClipSort,
   ClipStatus,
+  Frames,
   Health,
   Job,
   RadarCandidate,
@@ -36,7 +37,8 @@ function errorText(detail: unknown): string | undefined {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+    // FormData sets its own multipart boundary
+    headers: typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : undefined,
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
@@ -51,6 +53,17 @@ const post = <T>(path: string, body?: unknown) =>
 export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
+  frames: () => request<Frames>('/frames'),
+  uploadFrame: (name: string, file: File) => {
+    const body = new FormData()
+    body.append('name', name)
+    body.append('file', file)
+    return request<Frames>('/frames', { method: 'POST', body })
+  },
+  setDefaultFrame: (frameId: number | null) =>
+    request<Frames>('/frames/default', { method: 'PUT', body: JSON.stringify({ frame_id: frameId }) }),
+  deleteFrame: (id: number) => request<Frames>(`/frames/${id}`, { method: 'DELETE' }),
+  rerenderWithFrame: () => post<{ queued: number }>('/frames/rerender'),
   warmup: () => request<Warmup[]>('/warmup'),
   startWarmup: (accountId: number) => post<Warmup>(`/warmup/${accountId}/start`),
   stopWarmup: (accountId: number) => post<Warmup>(`/warmup/${accountId}/stop`),

@@ -79,7 +79,7 @@ gtamp4/
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
 | **Aquecimento** | Checklist **manual** de 14 dias por conta (`app/warmup.py`: 3 fases, tarefas diárias e "uma vez", tabela `warmupcheck`, dia local da máquina). Só registra o que o usuário marcou; nunca automatizar (ver Regras) |
 | **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo configurável |
-| **Moldura** | Templates de overlay (PNG) e layout 9:16 |
+| **Moldura** | PNGs 9:16 com transparência (`app/frames.py`: valida assinatura, proporção e alfa só com stdlib; arquivos em `data/frames/`). Uma moldura "em uso" (ou nenhuma) vale para renders novos; "Re-renderizar cortes" enfileira `render_clip` para os pendentes/aprovados. Prévia no navegador com CSS por cima de um corte |
 | **Estúdio** | Ajuste fino de um corte: início/fim, título, descrição; re-renderiza |
 | **Ajustes** | `AppConfig` (`store.py`, tabela `setting`): duração mín/máx e nº de cortes, encoder, modelo do Whisper, modelos do Claude. Os jobs leem a config e passam explicitamente ao pipeline (o pipeline não lê o banco). A chave da API **não** é editável aqui (fica no `.env`). Também: limpeza dos vídeos originais cujos cortes já foram todos postados/recusados |
 
@@ -100,7 +100,7 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 1. `download`: yt-dlp baixa vídeo (máx. 1080p), metadados e legendas (manual > automática, **no idioma original**).
 2. `transcribe`: usa a legenda; se não houver, faster-whisper em CPU. Resultado: segmentos com timestamps.
 3. `energy` + `score`: mede o volume por segundo; Claude recebe transcrição anotada com energia + metadados e devolve trechos (start, end, potential, reason, title, description, hashtags). `sanitize()` limita duração (12–75 s) e quantidade (≤5).
-4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado), aplica a moldura padrão se houver, normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
+4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado), aplica a moldura em uso se houver, normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
 5. Cria `Clip` com status `pending_review` só depois do arquivo renderizado.
 
 Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
@@ -109,7 +109,7 @@ Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 
 - Abre num painel (`StudioModal`) pelo botão "Estúdio" dos cards (Aprovar e Postagem). Não é uma aba.
 - `GET /api/clips/{id}/studio`: corte, vídeo original (`/api/media/videos/`, com Range, então dá para pular no player), transcrição e o job de render pendente.
-- `PATCH /api/clips/{id}`: o texto é salvo na hora. Início/fim novos (3 a 180 s) viram um job `render_clip`; o `Clip` só muda depois do render dar certo. O arquivo novo se chama `{youtube_id}_{clip_id}_{start}-{end}.mp4`; o antigo é apagado se nenhum outro corte usa. Um render por corte de cada vez (409).
+- `PATCH /api/clips/{id}`: o texto é salvo na hora. Início/fim novos (3 a 180 s) viram um job `render_clip`; o `Clip` só muda depois do render dar certo. O arquivo novo se chama `{youtube_id}_{clip_id}_{start}-{end}.mp4` (com `_v{job_id}` se o nome repetir, ex.: só trocou a moldura); o antigo é apagado se nenhum outro corte usa. Um render por corte de cada vez (409).
 - Se o vídeo original foi apagado do disco, o job baixa de novo.
 
 ## Radar
@@ -189,6 +189,6 @@ npx tsc --noEmit   # typecheck
 2. ~~Aba Aprovar com cards~~ feito.
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
-5. ~~Estúdio~~, ~~Painel~~, ~~Ajustes~~ e ~~Aquecimento~~ feitos. Faltam: Moldura, zoom do Estúdio.
+5. ~~Estúdio~~, ~~Painel~~, ~~Ajustes~~, ~~Aquecimento~~ e ~~Moldura~~ feitos. Falta: zoom do Estúdio.
 
 Itens adiados: ver `docs/BACKLOG.md`.

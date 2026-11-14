@@ -155,6 +155,9 @@ def render_clip(session: Session, job: Job) -> None:
 
     _step(session, job, 0.4, "Renderizando")
     dst = studio_clip_path(video.youtube_id, clip.id or 0, start, end)
+    if clip.file_path and Path(clip.file_path) == dst:
+        # same times (e.g. new frame): never overwrite the file the user may be watching
+        dst = dst.with_name(f"{dst.stem}_v{job.id}{dst.suffix}")
     encoder = get_app_config(session).video_encoder
     cut.render_clip(src, dst, start, end, _default_frame(session), encoder)
 

@@ -190,3 +190,14 @@ export type Warmup = {
   tasks: WarmupTask[]
   days: WarmupDay[]
 }
+
+export type Frame = {
+  id: number
+  name: string
+  url: string
+  is_default: boolean
+  width: number | null
+  height: number | null
+}
+
+export type Frames = { frames: Frame[]; live_clips: number }
