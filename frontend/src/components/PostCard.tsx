@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { captionText, formatViews, PLATFORM_LABEL } from '../lib/format'
+import { captionText, formatViews, PLATFORM_LABEL, sourceAt } from '../lib/format'
 import type { Account, Clip } from '../lib/types'
 import { CopyButton } from './CopyButton'
 
@@ -46,13 +46,17 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove }: Props) {
           <p className="mt-0.5 text-zinc-400">
             Potencial {clip.potential}/100 · {formatViews(clip.source.views)} ·{' '}
             <a
-              href={clip.source.url}
+              href={sourceAt(clip.source.url, clip.start_s)}
               target="_blank"
               rel="noreferrer"
               className="text-cyan-300 underline"
             >
               fonte
             </a>
+          </p>
+          <p className="truncate text-zinc-500" title={clip.source.title}>
+            Do vídeo: {clip.source.title}
+            {clip.source.channel && ` · ${clip.source.channel}`}
           </p>
         </div>
 

@@ -14,6 +14,12 @@ export function formatDuration(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
+/** YouTube link that opens the source video at the clip's start. */
+export function sourceAt(url: string, seconds: number): string {
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}t=${Math.floor(seconds)}s`
+}
+
 export const PLATFORM_LABEL: Record<string, string> = {
   tiktok: 'TikTok',
   instagram: 'Instagram',

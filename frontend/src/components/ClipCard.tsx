@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
-import { formatDateTime, formatDuration, formatViews } from '../lib/format'
+import { formatDateTime, formatDuration, formatViews, sourceAt } from '../lib/format'
 import type { Clip, ClipStatus, Source } from '../lib/types'
 
 type Props = {
@@ -45,13 +45,22 @@ export function ClipCard({ clip, onStatus, onSource }: Props) {
         <h3 className="text-sm font-semibold leading-snug">{clip.title}</h3>
 
         <div className="space-y-0.5 text-zinc-400">
+          <p className="line-clamp-2" title={source.title}>
+            Do vídeo: <span className="text-zinc-300">{source.title}</span>
+            {source.channel && ` · ${source.channel}`}
+          </p>
           <p className="font-medium text-zinc-200">{formatViews(source.views)}</p>
           <p>Consulta: {formatDateTime(source.views_checked_at)}</p>
           <p>
-            <a href={source.url} target="_blank" rel="noreferrer" className="text-cyan-300 underline">
+            <a
+              href={sourceAt(source.url, clip.start_s)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-cyan-300 underline"
+            >
               Ver fonte no YouTube
             </a>{' '}
-            · {formatDuration(clip.start_s)}–{formatDuration(clip.end_s)}
+            · trecho {formatDuration(clip.start_s)}–{formatDuration(clip.end_s)}
           </p>
           <button
             onClick={refresh}
