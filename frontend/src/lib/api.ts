@@ -6,6 +6,11 @@ import type {
   ClipStatus,
   Health,
   Job,
+  RadarCandidate,
+  RadarConfig,
+  RadarQuery,
+  RadarQueryKind,
+  RadarStatus,
   Source,
 } from './types'
 
@@ -46,4 +51,19 @@ export const api = {
   updateAccount: (id: number, data: AccountInput) =>
     request<Account>(`/accounts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAccount: (id: number) => request<void>(`/accounts/${id}`, { method: 'DELETE' }),
+  radar: () => request<RadarStatus>('/radar'),
+  setRadarConfig: (config: RadarConfig) =>
+    request<RadarStatus>('/radar/config', { method: 'PUT', body: JSON.stringify(config) }),
+  radarScan: () => post<Job>('/radar/scan'),
+  radarQueries: () => request<RadarQuery[]>('/radar/queries'),
+  addRadarQuery: (kind: RadarQueryKind, query: string) =>
+    post<RadarQuery>('/radar/queries', { kind, query }),
+  toggleRadarQuery: (id: number, enabled: boolean) =>
+    request<RadarQuery>(`/radar/queries/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    }),
+  deleteRadarQuery: (id: number) => request<void>(`/radar/queries/${id}`, { method: 'DELETE' }),
+  radarCandidates: () => request<RadarCandidate[]>('/radar/candidates'),
+  sendCandidate: (id: number) => post<RadarCandidate>(`/radar/candidates/${id}/send`),
 }

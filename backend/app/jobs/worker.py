@@ -7,6 +7,7 @@ from sqlmodel import Session
 from app.db import get_engine
 from app.jobs import queue
 from app.models import Job, JobStatus
+from app.pipeline.proc import explain_error
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ def process_one(session: Session) -> bool:
         queue.update(session, job, status=JobStatus.DONE, progress=1.0, message="Concluído")
     except Exception as exc:  # noqa: BLE001 - every failure must land on the job
         log.exception("job %s failed", job.id)
-        queue.update(session, job, status=JobStatus.FAILED, message="Falhou", error=str(exc))
+        queue.update(
+            session, job, status=JobStatus.FAILED, message="Falhou", error=explain_error(str(exc))
+        )
     return True
 
 

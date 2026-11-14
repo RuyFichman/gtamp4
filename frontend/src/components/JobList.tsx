@@ -20,7 +20,8 @@ export function JobList({ jobs, onChange }: { jobs: Job[]; onChange: () => void 
               <p
                 className={`text-xs ${job.status === 'failed' ? 'text-orange-400' : 'text-zinc-400'}`}
               >
-                {LABEL[job.status]}: {job.message}
+                {LABEL[job.status]}
+                {job.message && job.message !== LABEL[job.status] && `: ${job.message}`}
               </p>
               {job.error && (
                 <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-orange-300/80">

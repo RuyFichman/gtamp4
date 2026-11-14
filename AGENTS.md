@@ -105,6 +105,18 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 
 Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 
+## Radar
+
+- `scheduler.py`: um tick do APScheduler a cada 1 min lê a config do banco (`store.py`, tabela `setting`) e só **enfileira** jobs: `radar_scan` no intervalo escolhido (se ligado) e `refresh_views` a cada 3 h. O worker executa. Nunca publica nada.
+- `radar_scan` (`jobs/radar_jobs.py`):
+  1. roda cada `RadarQuery` ativa (`pipeline/radar.py`, yt-dlp com `extract_flat`, sem baixar);
+  2. ignora vídeos já vistos (`RadarCandidate`) ou já processados (`SourceVideo`);
+  3. aplica o pré-filtro (duração 90 s a 3 h, sem live);
+  4. faz a triagem por título com Haiku (`pipeline/triage.py`; sem chave, regex "GTA 6/VI");
+  5. envia os aprovados para `process_video`, os mais vistos primeiro, até o **limite diário** (envios que falharam não contam);
+  6. quem fica "na espera" por mais de 3 dias é descartado.
+- `RadarCandidate.status`: `rejected` | `waiting` | `sent`. "Cortar mesmo assim" na UI ignora triagem e limite.
+
 Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 
 ## Regras
@@ -115,7 +127,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 - **`data/` nunca é versionado.**
 - **Sem automação de aquecimento de contas** (curtir/rolar feed com bot). Viola os termos do TikTok/Instagram e causa ban. A aba Aquecimento é só checklist manual.
 - **Postagem é 100% manual (decisão do usuário).** Não implementar postagem automática de nenhum tipo: nem APIs oficiais, nem automação de navegador, nem agendamento que publique sozinho. O app apenas prepara o vídeo e o texto e registra o que o usuário marcou como postado.
-- Chamadas ao Claude: centralizadas em `backend/app/pipeline/score.py` (ou um `ai.py`), com model ID vindo de config. Validar resposta com Pydantic; em JSON inválido, tentar de novo uma vez e então marcar o job como `failed` com mensagem clara.
+- Chamadas ao Claude: só em `backend/app/pipeline/score.py` (cortes, Sonnet) e `pipeline/triage.py` (Radar, Haiku), com model ID vindo de config. Validar resposta com Pydantic; em JSON inválido, tentar de novo uma vez e então marcar o job como `failed` com mensagem clara.
 - Chamadas ao ffmpeg/yt-dlp: sempre via helper que captura stderr e grava as últimas linhas no `Job.error`. Nunca engolir erros (ex.: "ffmpeg exited with code ..." precisa vir com o motivo).
 - Mensagens de erro mostradas na UI devem ser em português e acionáveis.
 - Não adicionar dependências pesadas sem necessidade; preferir a stdlib.
@@ -147,6 +159,9 @@ npx tsc --noEmit   # typecheck
 - SQLModel exige datetimes **com fuso** (`utcnow()` de `app.models`); comparar com datetime "naive" dá erro 500.
 - yt-dlp precisa de runtime JS para o YouTube: usamos Node (`js_runtimes: {"node": {}}` em `pipeline/download.py`) e o pacote `yt-dlp[default]`.
 - Um terminal aberto antes de instalar o ffmpeg não o enxerga no PATH: abra um terminal novo.
+- yt-dlp desta versão não tem o atalho `ytsearchdate`: o Radar usa a URL `youtube.com/results?search_query=...&sp=CAI%3D` (ordenado por data).
+- `create_all` não altera tabelas existentes. `db.add_missing_columns()` adiciona colunas novas no startup (com default escalar ou NULL). Para renomear ou apagar coluna, escreva a migração à mão.
+- O YouTube às vezes responde "confirm you're not a bot" ou "video unavailable". `proc.explain_error()` põe uma dica em pt-BR acima do erro cru.
 - O prompt da IA é em português; sem o idioma explícito, a IA escrevia títulos de vídeos em inglês em português. Por isso `plan_with_claude` recebe `language` e o `ClipPlan` tem `video_language` preenchido antes dos cortes. Só `reason` é em pt-BR. Não remova isso.
 
 ## Testes
@@ -165,7 +180,7 @@ npx tsc --noEmit   # typecheck
 
 1. ~~Colar link → baixar → transcrever → IA escolhe trechos → corte 9:16~~ feito (moldura vai no item 5).
 2. ~~Aba Aprovar com cards~~ feito.
-3. Radar com coleta automática + atualização de views.
+3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
 5. Moldura (upload do PNG de overlay), Estúdio, Painel, Aquecimento, Ajustes.
 

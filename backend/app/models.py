@@ -88,8 +88,36 @@ class FrameTemplate(SQLModel, table=True):
 
 class RadarQuery(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    kind: str = "search"  # search | channel
     query: str
     enabled: bool = True
+    last_run_at: datetime | None = None
+    last_error: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class CandidateStatus(StrEnum):
+    REJECTED = "rejected"  # filtered out (pre-filter or triage)
+    WAITING = "waiting"  # passed triage, waiting for the daily quota
+    SENT = "sent"  # process_video job enqueued
+
+
+class RadarCandidate(SQLModel, table=True):
+    """Every video the Radar has seen, so it is never evaluated twice."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    youtube_id: str = Field(index=True, unique=True)
+    url: str
+    title: str = ""
+    channel: str = ""
+    duration_s: float | None = None
+    views: int | None = None
+    query_id: int | None = None
+    status: CandidateStatus = Field(default=CandidateStatus.REJECTED, index=True)
+    reason: str = ""
+    job_id: int | None = None
+    found_at: datetime = Field(default_factory=utcnow)
+    sent_at: datetime | None = None
 
 
 class Setting(SQLModel, table=True):

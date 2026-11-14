@@ -63,3 +63,44 @@ export type Account = AccountInput & {
   posted_count: number
   created_at: string
 }
+
+export type RadarConfig = {
+  enabled: boolean
+  interval_minutes: number
+  daily_limit: number
+}
+
+export type RadarStatus = {
+  config: RadarConfig
+  last_scan_at: string | null
+  next_scan_at: string | null
+  sent_last_24h: number
+  scanning: boolean
+}
+
+export type RadarQueryKind = 'search' | 'channel'
+
+export type RadarQuery = {
+  id: number
+  kind: RadarQueryKind
+  query: string
+  enabled: boolean
+  last_run_at: string | null
+  last_error: string | null
+}
+
+export type CandidateStatus = 'rejected' | 'waiting' | 'sent'
+
+export type RadarCandidate = {
+  id: number
+  youtube_id: string
+  url: string
+  title: string
+  channel: string
+  duration_s: number | null
+  views: number | null
+  status: CandidateStatus
+  reason: string
+  found_at: string
+  sent_at: string | null
+}

@@ -46,3 +46,15 @@ def update(session: Session, job: Job, **fields: Any) -> None:
     job.updated_at = utcnow()
     session.add(job)
     session.commit()
+
+
+def has_pending(session: Session, kind: str) -> bool:
+    """True if a job of this kind is queued or running (avoids stacking scans)."""
+    return (
+        session.exec(
+            select(Job.id).where(
+                Job.kind == kind, col(Job.status).in_([JobStatus.QUEUED, JobStatus.RUNNING])
+            )
+        ).first()
+        is not None
+    )

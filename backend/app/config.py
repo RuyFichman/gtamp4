@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     model_writer: str = "claude-sonnet-5-5"
 
     data_dir: Path = PROJECT_DIR / "data"
-    radar_interval_minutes: int = 5
+    # defaults for the Radar; the Radar tab overrides them (stored in the setting table)
+    radar_interval_minutes: int = 30
+    radar_daily_limit: int = 10
     video_encoder: str = "auto"  # auto | h264_amf | libx264
 
     @property

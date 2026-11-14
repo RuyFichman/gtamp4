@@ -3,6 +3,7 @@ import { StatusBar } from './components/StatusBar'
 import { AccountsPage } from './pages/AccountsPage'
 import { ApprovePage } from './pages/ApprovePage'
 import { PostPage } from './pages/PostPage'
+import { RadarPage } from './pages/RadarPage'
 
 const TABS = [
   'Painel',
@@ -15,7 +16,7 @@ const TABS = [
   'Ajustes',
 ] as const
 type Tab = (typeof TABS)[number]
-const READY: Tab[] = ['Aprovar', 'Postagem', 'Contas']
+const READY: Tab[] = ['Aprovar', 'Postagem', 'Contas', 'Radar']
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Aprovar')
@@ -60,6 +61,7 @@ export default function App() {
         {/* mounted on open so they always show fresh data */}
         {tab === 'Postagem' && <PostPage />}
         {tab === 'Contas' && <AccountsPage />}
+        {tab === 'Radar' && <RadarPage />}
         {!READY.includes(tab) && <p className="text-zinc-400">Aba “{tab}” em construção.</p>}
       </main>
     </div>

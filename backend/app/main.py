@@ -6,7 +6,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 import app.jobs.handlers  # noqa: F401  (registers job handlers)
-from app.api import accounts, clips, jobs, system, videos
+import app.jobs.radar_jobs  # noqa: F401
+from app import scheduler
+from app.api import accounts, clips, jobs, radar, system, videos
 from app.config import get_settings
 from app.db import init_db
 from app.jobs.worker import Worker
@@ -22,11 +24,20 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_db()
     worker = Worker()
     worker.start()
+    timer = scheduler.start()
     yield
+    timer.shutdown(wait=False)
     worker.stop()
 
 
 app = FastAPI(title="gtamp4", lifespan=lifespan)
-for router in (system.router, videos.router, jobs.router, clips.router, accounts.router):
+for router in (
+    system.router,
+    videos.router,
+    jobs.router,
+    clips.router,
+    accounts.router,
+    radar.router,
+):
     app.include_router(router)
 app.mount("/api/media/clips", StaticFiles(directory=settings.clips_dir), name="clips")
