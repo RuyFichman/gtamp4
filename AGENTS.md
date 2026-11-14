@@ -26,8 +26,8 @@ Tudo roda na máquina do usuário. Não há deploy em nuvem, login nem multi-ten
 | Agendador | **APScheduler** (coleta do Radar, atualização de views) |
 | Download | **yt-dlp** (vídeo, metadados, legendas) |
 | Transcrição | 1º legendas do YouTube via yt-dlp; fallback **faster-whisper** em CPU (`small`, `int8`) |
-| IA | **API do Claude** (SDK `anthropic`): Haiku para triagem/nota, Sonnet para títulos/descrições. Sempre saída estruturada (JSON validado com Pydantic) |
-| Energia da fala | **librosa** (RMS/volume) como sinal extra de "fala mais agitada" |
+| IA | **API do Claude** (SDK `anthropic`): uma chamada por vídeo com `MODEL_WRITER` (Sonnet) que escolhe trechos, dá a nota e escreve título/descrição; `MODEL_TRIAGE` (Haiku) fica para filtrar vídeos do Radar. Saída estruturada via `messages.parse` + Pydantic. Sem chave, cai numa heurística por volume |
+| Energia da fala | ffmpeg → PCM → **numpy** (RMS por segundo, `pipeline/energy.py`), passada à IA como "energia 0-9" por linha |
 | Edição de vídeo | **ffmpeg** (CLI, chamado via `subprocess`) |
 | Frontend | **React + Vite + TypeScript + Tailwind** + shadcn/ui |
 | Comunicação | REST JSON em `/api/*`; progresso de jobs via polling (ou SSE em `/api/events`) |
@@ -99,9 +99,11 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 
 1. `download`: yt-dlp baixa vídeo (máx. 1080p), metadados e legendas (manual > automática, **no idioma original**).
 2. `transcribe`: usa a legenda; se não houver, faster-whisper em CPU. Resultado: segmentos com timestamps.
-3. `score`: Claude recebe transcrição + metadados e devolve JSON com trechos candidatos (start, end, potential, reason, title, description, hashtags). Combina com energia de áudio (librosa).
-4. `cut`: ffmpeg corta, reenquadra para 1080x1920, aplica moldura, normaliza áudio (`loudnorm`).
-5. Cria `Clip` com status `pending_review`.
+3. `energy` + `score`: mede o volume por segundo; Claude recebe transcrição anotada com energia + metadados e devolve trechos (start, end, potential, reason, title, description, hashtags). `sanitize()` limita duração (12–75 s) e quantidade (≤5).
+4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado), aplica a moldura padrão se houver, normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
+5. Cria `Clip` com status `pending_review` só depois do arquivo renderizado.
+
+Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 
 Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 
@@ -139,6 +141,12 @@ npm run build
 npm run lint
 npx tsc --noEmit   # typecheck
 ```
+
+## Armadilhas conhecidas
+
+- SQLModel exige datetimes **com fuso** (`utcnow()` de `app.models`); comparar com datetime "naive" dá erro 500.
+- yt-dlp precisa de runtime JS para o YouTube: usamos Node (`js_runtimes: {"node": {}}` em `pipeline/download.py`) e o pacote `yt-dlp[default]`.
+- Um terminal aberto antes de instalar o ffmpeg não o enxerga no PATH: abra um terminal novo.
 
 ## Testes
 

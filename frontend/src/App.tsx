@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { StatusBar } from './components/StatusBar'
+import { ApprovePage } from './pages/ApprovePage'
 
 const TABS = [
   'Painel',
@@ -15,6 +16,7 @@ type Tab = (typeof TABS)[number]
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Aprovar')
+  const [pending, setPending] = useState(0)
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
@@ -28,24 +30,31 @@ export default function App() {
         <StatusBar />
       </header>
 
-      <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-white/10">
+      <nav className="mt-6 flex gap-1 overflow-x-auto border-b border-white/10 [scrollbar-width:none]">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition ${
+            className={`flex items-center gap-1.5 whitespace-nowrap px-4 py-2 text-sm font-medium transition ${
               tab === t
                 ? 'border-b-2 border-pink-500 text-pink-400'
                 : 'text-zinc-400 hover:text-zinc-100'
             }`}
           >
             {t}
+            {t === 'Aprovar' && pending > 0 && (
+              <span className="rounded-full bg-pink-500 px-1.5 text-xs text-white">{pending}</span>
+            )}
           </button>
         ))}
       </nav>
 
       <main className="mt-6">
-        <p className="text-zinc-400">Aba “{tab}” em construção.</p>
+        {/* kept mounted so polling and the pending badge keep working on other tabs */}
+        <div hidden={tab !== 'Aprovar'}>
+          <ApprovePage onCountChange={setPending} />
+        </div>
+        {tab !== 'Aprovar' && <p className="text-zinc-400">Aba “{tab}” em construção.</p>}
       </main>
     </div>
   )
