@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { StatusBar } from './components/StatusBar'
 import { AccountsPage } from './pages/AccountsPage'
+import { DashboardPage } from './pages/DashboardPage'
 import { ApprovePage } from './pages/ApprovePage'
 import { PostPage } from './pages/PostPage'
 import { RadarPage } from './pages/RadarPage'
@@ -16,7 +17,7 @@ const TABS = [
   'Ajustes',
 ] as const
 type Tab = (typeof TABS)[number]
-const READY: Tab[] = ['Aprovar', 'Postagem', 'Contas', 'Radar']
+const READY: Tab[] = ['Painel', 'Aprovar', 'Postagem', 'Contas', 'Radar']
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('Aprovar')
@@ -59,6 +60,7 @@ export default function App() {
           <ApprovePage active={tab === 'Aprovar'} onCountChange={setPending} />
         </div>
         {/* mounted on open so they always show fresh data */}
+        {tab === 'Painel' && <DashboardPage onNavigate={setTab} />}
         {tab === 'Postagem' && <PostPage />}
         {tab === 'Contas' && <AccountsPage />}
         {tab === 'Radar' && <RadarPage />}

@@ -48,3 +48,15 @@ export function parseTime(text: string): number | null {
   const value = parts.length === 2 ? Number(parts[0]) * 60 + Number(parts[1]) : Number(parts[0])
   return value >= 0 ? value : null
 }
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024 ** 2) return `${Math.round(bytes / 1024)} KB`
+  if (bytes < 1024 ** 3) return `${Math.round(bytes / 1024 ** 2)} MB`
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+}
+
+/** "2026-11-14" -> "14/11" */
+export function formatDayMonth(isoDate: string): string {
+  const [, m, d] = isoDate.split('-')
+  return `${d}/${m}`
+}

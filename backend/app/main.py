@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 import app.jobs.handlers  # noqa: F401  (registers job handlers)
 import app.jobs.radar_jobs  # noqa: F401
 from app import scheduler
-from app.api import accounts, clips, jobs, radar, system, videos
+from app.api import accounts, clips, jobs, radar, stats, system, videos
 from app.config import get_settings
 from app.db import init_db
 from app.jobs.worker import Worker
@@ -38,6 +38,7 @@ for router in (
     clips.router,
     accounts.router,
     radar.router,
+    stats.router,
 ):
     app.include_router(router)
 app.mount("/api/media/clips", StaticFiles(directory=settings.clips_dir), name="clips")

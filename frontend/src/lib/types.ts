@@ -125,3 +125,31 @@ export type RadarCandidate = {
   found_at: string
   sent_at: string | null
 }
+
+export type DayStat = { date: string; generated: number; posted: number }
+
+export type Stats = {
+  clips: { pending_review: number; approved: number; rejected: number; posted: number; total: number }
+  approval_rate: number | null
+  avg_potential_kept: number | null
+  avg_potential_rejected: number | null
+  source_videos: number
+  days: DayStat[]
+  accounts: {
+    id: number
+    handle: string
+    platform: string
+    posted: number
+    last_posted_at: string | null
+  }[]
+  jobs: { queued: number; running: number; failed: number; done_24h: number }
+  radar: {
+    enabled: boolean
+    sent_24h: number
+    daily_limit: number
+    found_24h: number
+    waiting: number
+    last_scan_at: string | null
+  }
+  disk: { videos_bytes: number; videos_files: number; clips_bytes: number }
+}

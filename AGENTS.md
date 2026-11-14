@@ -73,7 +73,7 @@ gtamp4/
 
 | Aba | Função |
 |---|---|
-| **Painel** | Estatísticas: cortes gerados, aprovados, postados, jobs com falha |
+| **Painel** | Estatísticas (`GET /api/stats`, calculadas em `app/stats.py`): fila de aprovação/postagem, taxa de aprovação, cortes por dia (14 dias, fuso da máquina), potencial médio aprovados vs. recusados, postados por conta, Radar, jobs, disco. Gráfico em SVG próprio (sem lib), cores validadas para daltonismo |
 | **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, estúdio, baixar) |
 | **Postagem** | Cortes aprovados aguardando postagem manual: baixar vídeo, copiar título/descrição/hashtags, escolher a conta e marcar como "postado" (com link do post, opcional) |
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
@@ -189,6 +189,6 @@ npx tsc --noEmit   # typecheck
 2. ~~Aba Aprovar com cards~~ feito.
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
-5. ~~Estúdio~~ feito. Faltam: Moldura (upload do PNG de overlay), Painel, Aquecimento, Ajustes.
+5. ~~Estúdio~~ e ~~Painel~~ feitos. Faltam: Moldura (upload do PNG de overlay), Aquecimento, Ajustes.
 
 Itens adiados: ver `docs/BACKLOG.md`.

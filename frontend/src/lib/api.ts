@@ -13,6 +13,7 @@ import type {
   RadarQueryKind,
   RadarStatus,
   Source,
+  Stats,
   Studio,
 } from './types'
 
@@ -33,6 +34,7 @@ const post = <T>(path: string, body?: unknown) =>
 
 export const api = {
   health: () => request<Health>('/health'),
+  stats: () => request<Stats>('/stats'),
   addVideo: (url: string) => post<Job>('/videos', { url }),
   refreshViews: (videoId: number) => post<Source>(`/videos/${videoId}/refresh-views`),
   jobs: () => request<Job[]>('/jobs'),
