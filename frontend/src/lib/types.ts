@@ -153,3 +153,24 @@ export type Stats = {
   }
   disk: { videos_bytes: number; videos_files: number; clips_bytes: number }
 }
+
+export type AppConfig = {
+  min_clip_s: number
+  max_clip_s: number
+  max_clips: number
+  video_encoder: 'auto' | 'h264_amf' | 'libx264'
+  whisper_model: 'tiny' | 'base' | 'small' | 'medium'
+  model_writer: string
+  model_triage: string
+}
+
+export type AppSettings = {
+  config: AppConfig
+  defaults: AppConfig
+  ai_key_set: boolean
+  env_files: string[]
+  amf_available: boolean
+  data_dir: string
+}
+
+export type CleanupPreview = { files: number; bytes: number; blocked: string | null }

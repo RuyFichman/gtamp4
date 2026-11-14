@@ -24,10 +24,12 @@ def parse_json3(data: dict[str, Any]) -> list[Segment]:
     return segments
 
 
-def whisper_transcribe(video: Path, language: str | None) -> tuple[list[Segment], str | None]:
+def whisper_transcribe(
+    video: Path, language: str | None, model_size: str = "small"
+) -> tuple[list[Segment], str | None]:
     from faster_whisper import WhisperModel  # heavy import, only when needed
 
-    model = WhisperModel("small", device="cpu", compute_type="int8")
+    model = WhisperModel(model_size, device="cpu", compute_type="int8")
     raw, info = model.transcribe(str(video), language=language, vad_filter=True)
     segments = [
         Segment(start=round(s.start, 2), end=round(s.end, 2), text=s.text.strip()) for s in raw

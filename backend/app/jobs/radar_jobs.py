@@ -21,7 +21,7 @@ from app.models import (
 )
 from app.pipeline import download, radar, triage
 from app.pipeline.radar import Found
-from app.store import get_radar_config, set_time
+from app.store import get_app_config, get_radar_config, set_time
 
 log = logging.getLogger(__name__)
 
@@ -125,7 +125,8 @@ def radar_scan(session: Session, job: Job) -> None:
             .order_by(col(RadarCandidate.sent_at).desc())
             .limit(30)
         ).all()
-        decisions = triage.triage(to_triage, list(recent))
+        model = get_app_config(session).model_triage
+        decisions = triage.triage(to_triage, list(recent), model)
         for video in to_triage:
             cand = session.exec(
                 select(RadarCandidate).where(RadarCandidate.youtube_id == video.youtube_id)

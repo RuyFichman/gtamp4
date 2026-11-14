@@ -2,7 +2,6 @@
 
 from functools import lru_cache
 
-from app.config import get_settings
 from app.pipeline.proc import CommandError, run
 
 HW_ENCODER = "h264_amf"
@@ -34,8 +33,8 @@ def hw_encoder_works() -> bool:
     return True
 
 
-def pick_encoder() -> str:
-    choice = get_settings().video_encoder
+def pick_encoder(choice: str = "auto") -> str:
+    """choice comes from the Ajustes tab: auto | h264_amf | libx264."""
     if choice in (HW_ENCODER, SW_ENCODER):
         return choice
     return HW_ENCODER if hw_encoder_works() else SW_ENCODER

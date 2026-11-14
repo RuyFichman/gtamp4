@@ -9,6 +9,7 @@ from app.jobs import queue
 from app.jobs.worker import handler
 from app.models import Clip, FrameTemplate, Job, JobStatus, SourceVideo, utcnow
 from app.pipeline import cut, download, energy, score, transcribe
+from app.store import get_app_config
 
 PROCESS_VIDEO = "process_video"
 
@@ -27,6 +28,8 @@ def _default_frame(session: Session) -> Path | None:
 @handler(PROCESS_VIDEO)
 def process_video(session: Session, job: Job) -> None:
     settings = get_settings()
+    cfg = get_app_config(session)
+    limits = score.ClipLimits(cfg.min_clip_s, cfg.max_clip_s, cfg.max_clips)
     url = job.payload["url"]
 
     _step(session, job, 0.02, "Lendo informações do vídeo")
@@ -60,7 +63,7 @@ def process_video(session: Session, job: Job) -> None:
         segments = transcribe.parse_json3(info.subtitle_json3)
     else:
         _step(session, job, 0.35, "Transcrevendo com Whisper (sem legenda no YouTube)")
-        segments, lang = transcribe.whisper_transcribe(path, info.language)
+        segments, lang = transcribe.whisper_transcribe(path, info.language, cfg.whisper_model)
         video.language = video.language or lang
     video.transcript = list(segments)
     session.add(video)
@@ -80,9 +83,11 @@ def process_video(session: Session, job: Job) -> None:
             segments=segments,
             energy=loud,
             duration=video.duration_s,
+            limits=limits,
+            model=cfg.model_writer,
         )
     else:
-        ideas = score.plan_heuristic(video.title, segments, loud, video.duration_s)
+        ideas = score.plan_heuristic(video.title, segments, loud, video.duration_s, limits)
 
     if not ideas:
         _step(session, job, 1.0, "Nenhum trecho bom encontrado")
@@ -92,7 +97,7 @@ def process_video(session: Session, job: Job) -> None:
     for i, idea in enumerate(ideas, 1):
         _step(session, job, 0.6 + 0.4 * (i - 1) / len(ideas), f"Cortando {i} de {len(ideas)}")
         dst = settings.clips_dir / f"{video.youtube_id}_{idea.start_s:.0f}-{idea.end_s:.0f}.mp4"
-        cut.render_clip(path, dst, idea.start_s, idea.end_s, frame)
+        cut.render_clip(path, dst, idea.start_s, idea.end_s, frame, cfg.video_encoder)
         # reprocessing the same video must not duplicate a clip (keeps its status)
         clip = session.exec(select(Clip).where(Clip.file_path == str(dst))).first() or Clip(
             source_video_id=video.id or 0, start_s=idea.start_s, end_s=idea.end_s
@@ -150,7 +155,8 @@ def render_clip(session: Session, job: Job) -> None:
 
     _step(session, job, 0.4, "Renderizando")
     dst = studio_clip_path(video.youtube_id, clip.id or 0, start, end)
-    cut.render_clip(src, dst, start, end, _default_frame(session))
+    encoder = get_app_config(session).video_encoder
+    cut.render_clip(src, dst, start, end, _default_frame(session), encoder)
 
     old = Path(clip.file_path) if clip.file_path else None
     clip.start_s, clip.end_s, clip.file_path = start, end, str(dst)

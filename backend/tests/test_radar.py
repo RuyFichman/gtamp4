@@ -77,7 +77,7 @@ def test_scan_dedupes_filters_and_respects_quota(
         found("v3", views=200),
     ]
     monkeypatch.setattr(radar, "list_videos", lambda kind, q: videos)
-    monkeypatch.setattr(triage, "triage", lambda vs, recent: triage.triage_heuristic(vs))
+    monkeypatch.setattr(triage, "triage", lambda vs, recent, model: triage.triage_heuristic(vs))
 
     job = queue.enqueue(session, radar_jobs.RADAR_SCAN)
     radar_jobs.radar_scan(session, job)

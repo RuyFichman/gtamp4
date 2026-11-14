@@ -81,7 +81,7 @@ gtamp4/
 | **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo configurável |
 | **Moldura** | Templates de overlay (PNG) e layout 9:16 |
 | **Estúdio** | Ajuste fino de um corte: início/fim, título, descrição; re-renderiza |
-| **Ajustes** | Chaves de API, intervalo de coleta, limites, encoder |
+| **Ajustes** | `AppConfig` (`store.py`, tabela `setting`): duração mín/máx e nº de cortes, encoder, modelo do Whisper, modelos do Claude. Os jobs leem a config e passam explicitamente ao pipeline (o pipeline não lê o banco). A chave da API **não** é editável aqui (fica no `.env`). Também: limpeza dos vídeos originais cujos cortes já foram todos postados/recusados |
 
 Cada card de corte mostra: player, título, **views do vídeo original**, **data da consulta**, link "Ver fonte no YouTube", botão "Atualizar views", **Potencial x/100** com o motivo, e a descrição gerada.
 
@@ -189,6 +189,6 @@ npx tsc --noEmit   # typecheck
 2. ~~Aba Aprovar com cards~~ feito.
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
-5. ~~Estúdio~~ e ~~Painel~~ feitos. Faltam: Moldura (upload do PNG de overlay), Aquecimento, Ajustes.
+5. ~~Estúdio~~, ~~Painel~~ e ~~Ajustes~~ feitos. Faltam: Aquecimento, Moldura, zoom do Estúdio.
 
 Itens adiados: ver `docs/BACKLOG.md`.

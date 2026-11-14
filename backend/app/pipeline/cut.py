@@ -36,9 +36,16 @@ def build_cut_command(
     return cmd
 
 
-def render_clip(src: Path, dst: Path, start: float, end: float, frame: Path | None) -> Path:
+def render_clip(
+    src: Path,
+    dst: Path,
+    start: float,
+    end: float,
+    frame: Path | None,
+    encoder_choice: str = "auto",
+) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
-    encoder = pick_encoder()
+    encoder = pick_encoder(encoder_choice)
     try:
         run(build_cut_command(src, dst, start, end, frame, encoder))
     except CommandError:

@@ -111,7 +111,7 @@ def test_render_job_updates_clip_and_removes_old_file(
         handlers, "studio_clip_path", lambda yid, cid, s, e: tmp_path / f"{yid}_{cid}_{s}-{e}.mp4"
     )
 
-    def fake_render(src: Path, dst: Path, start: float, end: float, frame: object) -> Path:
+    def fake_render(src: Path, dst: Path, start: float, end: float, *_: object) -> Path:
         dst.write_bytes(b"new")
         return dst
 

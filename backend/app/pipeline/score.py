@@ -1,5 +1,7 @@
 """Choose the best clip windows of a video. Claude when a key is set, a loudness heuristic otherwise."""
 
+from dataclasses import dataclass
+
 import anthropic
 import numpy as np
 from pydantic import BaseModel
@@ -8,9 +10,14 @@ from app.config import get_settings
 from app.pipeline.energy import mean_between
 from app.pipeline.types import Segment
 
-MIN_CLIP_S = 12.0
-MAX_CLIP_S = 75.0
-MAX_CLIPS = 5
+
+@dataclass(frozen=True)
+class ClipLimits:
+    """From the Ajustes tab (AppConfig); defaults match its defaults."""
+
+    min_s: float = 12.0
+    max_s: float = 75.0
+    max_clips: int = 5
 
 
 class ClipIdea(BaseModel):
@@ -29,12 +36,12 @@ class ClipPlan(BaseModel):
     clips: list[ClipIdea]
 
 
-SYSTEM_PROMPT = f"""Você é editor de cortes virais de GTA 6 para TikTok e Instagram Reels.
+_PROMPT = """Você é editor de cortes virais de GTA 6 para TikTok e Instagram Reels.
 Recebe a transcrição com timestamps de um vídeo do YouTube e escolhe os melhores trechos
 para virar cortes verticais curtos.
 
 Regras para cada corte:
-- Entre {MIN_CLIP_S:.0f} e {MAX_CLIP_S:.0f} segundos; comece e termine em frases completas.
+- Entre {min_s:.0f} e {max_s:.0f} segundos; comece e termine em frases completas.
 - Precisa fazer sentido sozinho, sem o resto do vídeo, e prender a atenção nos 2 primeiros segundos.
 - Prefira: revelações, notícias, opiniões fortes, polêmica, humor, reações e momentos de fala agitada.
   A coluna "energia" (0-9) indica volume da voz; energia alta costuma ser um bom sinal.
@@ -46,7 +53,11 @@ Regras para cada corte:
 - title: curto e chamativo (até 70 caracteres), sem clickbait mentiroso.
 - description: 1-2 frases + chamada para seguir. hashtags: 3 a 6, sem o símbolo #.
 
-Devolva de 0 a {MAX_CLIPS} cortes, do melhor para o pior. Se nada no vídeo for bom, devolva lista vazia."""
+Devolva de 0 a {max_clips} cortes, do melhor para o pior. Se nada no vídeo for bom, devolva lista vazia."""
+
+
+def system_prompt(limits: ClipLimits) -> str:
+    return _PROMPT.format(min_s=limits.min_s, max_s=limits.max_s, max_clips=limits.max_clips)
 
 
 def _fmt_time(seconds: float) -> str:
@@ -63,15 +74,17 @@ def format_transcript(segments: list[Segment], energy: np.ndarray) -> str:
     return "\n".join(lines)
 
 
-def sanitize(ideas: list[ClipIdea], duration: float | None) -> list[ClipIdea]:
+def sanitize(
+    ideas: list[ClipIdea], duration: float | None, limits: ClipLimits = ClipLimits()
+) -> list[ClipIdea]:
     limit = duration or float("inf")
     result: list[ClipIdea] = []
     for idea in ideas:
         start = max(0.0, idea.start_s)
         end = min(limit, idea.end_s)
-        if end - start < MIN_CLIP_S:
+        if end - start < limits.min_s:
             continue
-        end = min(end, start + MAX_CLIP_S)
+        end = min(end, start + limits.max_s)
         hashtags = [h.lstrip("#").strip() for h in idea.hashtags if h.strip("# ")]
         result.append(
             idea.model_copy(
@@ -83,7 +96,7 @@ def sanitize(ideas: list[ClipIdea], duration: float | None) -> list[ClipIdea]:
                 }
             )
         )
-    return result[:MAX_CLIPS]
+    return result[: limits.max_clips]
 
 
 def plan_with_claude(
@@ -96,6 +109,8 @@ def plan_with_claude(
     segments: list[Segment],
     energy: np.ndarray,
     duration: float | None,
+    limits: ClipLimits,
+    model: str,
 ) -> list[ClipIdea]:
     settings = get_settings()
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -113,9 +128,9 @@ def plan_with_claude(
     last_error: Exception | None = None
     for _ in range(2):  # one retry on bad output
         response = client.beta.messages.parse(
-            model=settings.model_writer,
+            model=model,
             max_tokens=16000,
-            system=SYSTEM_PROMPT,
+            system=system_prompt(limits),
             messages=[{"role": "user", "content": user}],
             output_format=ClipPlan,
             betas=["server-side-fallback-2026-07-01"],
@@ -124,18 +139,22 @@ def plan_with_claude(
         if response.stop_reason == "refusal":
             raise RuntimeError("A IA recusou analisar este vídeo.")
         if response.parsed_output is not None:
-            return sanitize(response.parsed_output.clips, duration)
+            return sanitize(response.parsed_output.clips, duration, limits)
         last_error = RuntimeError(f"Resposta da IA inválida (stop_reason={response.stop_reason})")
     raise last_error or RuntimeError("Resposta da IA inválida")
 
 
 def plan_heuristic(
-    title: str, segments: list[Segment], energy: np.ndarray, duration: float | None
+    title: str,
+    segments: list[Segment],
+    energy: np.ndarray,
+    duration: float | None,
+    limits: ClipLimits = ClipLimits(),
 ) -> list[ClipIdea]:
     """No API key: pick the loudest non-overlapping ~40s windows that contain speech."""
     total = int(duration or (segments[-1]["end"] if segments else 0))
-    window = 40
-    if total < MIN_CLIP_S or energy.size == 0:
+    window = int(min(max(40, limits.min_s), limits.max_s))
+    if total < limits.min_s or energy.size == 0:
         return []
     window = min(window, total)
     speech = np.zeros(total + 1)
@@ -151,7 +170,7 @@ def plan_heuristic(
     for _, start in scores:
         if all(abs(start - p) >= window for p in picked):
             picked.append(start)
-        if len(picked) == 3:
+        if len(picked) == min(3, limits.max_clips):
             break
     ideas = []
     for i, start in enumerate(picked, 1):
@@ -167,4 +186,4 @@ def plan_heuristic(
                 hashtags=[],
             )
         )
-    return sanitize(ideas, duration)
+    return sanitize(ideas, duration, limits)

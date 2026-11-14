@@ -1,5 +1,8 @@
 import type {
   Account,
+  AppConfig,
+  AppSettings,
+  CleanupPreview,
   AccountInput,
   Clip,
   ClipEdit,
@@ -17,6 +20,18 @@ import type {
   Studio,
 } from './types'
 
+/** FastAPI sends a string, or a list of validation errors (422). */
+function errorText(detail: unknown): string | undefined {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d: { msg?: string }) => (d.msg ?? '').replace(/^Value error, /, ''))
+      .filter(Boolean)
+      .join(' ')
+  }
+  return undefined
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
@@ -24,7 +39,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
-    throw new Error(body?.detail ?? `${res.status} ${res.statusText}`)
+    throw new Error(errorText(body?.detail) ?? `${res.status} ${res.statusText}`)
   }
   return (res.status === 204 ? undefined : await res.json()) as T
 }
@@ -35,6 +50,11 @@ const post = <T>(path: string, body?: unknown) =>
 export const api = {
   health: () => request<Health>('/health'),
   stats: () => request<Stats>('/stats'),
+  settings: () => request<AppSettings>('/settings'),
+  saveSettings: (config: AppConfig) =>
+    request<AppSettings>('/settings', { method: 'PUT', body: JSON.stringify(config) }),
+  cleanupPreview: () => request<CleanupPreview>('/maintenance/originals'),
+  cleanupOriginals: () => post<CleanupPreview>('/maintenance/originals/delete'),
   addVideo: (url: string) => post<Job>('/videos', { url }),
   refreshViews: (videoId: number) => post<Source>(`/videos/${videoId}/refresh-views`),
   jobs: () => request<Job[]>('/jobs'),

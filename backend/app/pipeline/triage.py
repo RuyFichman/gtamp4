@@ -42,7 +42,9 @@ def _describe(v: Found) -> str:
     return f"- {v.youtube_id} | {v.title} | canal: {v.channel} | {minutes} | views: {v.views}"
 
 
-def triage_with_claude(videos: list[Found], recent_titles: list[str]) -> dict[str, Decision]:
+def triage_with_claude(
+    videos: list[Found], recent_titles: list[str], model: str
+) -> dict[str, Decision]:
     settings = get_settings()
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     recent = "\n".join(f"- {t}" for t in recent_titles) or "(nenhum)"
@@ -50,7 +52,7 @@ def triage_with_claude(videos: list[Found], recent_titles: list[str]) -> dict[st
         _describe(v) for v in videos
     )
     response = client.beta.messages.parse(
-        model=settings.model_triage,
+        model=model,
         max_tokens=8000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user}],
@@ -78,9 +80,9 @@ def triage_heuristic(videos: list[Found]) -> dict[str, Decision]:
     }
 
 
-def triage(videos: list[Found], recent_titles: list[str]) -> dict[str, Decision]:
+def triage(videos: list[Found], recent_titles: list[str], model: str) -> dict[str, Decision]:
     if not videos:
         return {}
     if get_settings().anthropic_api_key:
-        return triage_with_claude(videos, recent_titles)
+        return triage_with_claude(videos, recent_titles, model)
     return triage_heuristic(videos)
