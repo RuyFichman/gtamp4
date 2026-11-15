@@ -11,6 +11,7 @@ import { TranscriptPicker } from './TranscriptPicker'
 type Props = { clipId: number; onClose: () => void; onSaved: () => void }
 
 type Form = Framing & {
+  captions: boolean
   title: string
   description: string
   hashtags: string
@@ -31,7 +32,9 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const requested = useRef<(Framing & { start: number; end: number }) | null>(null)
+  const requested = useRef<(Framing & { start: number; end: number; captions: boolean }) | null>(
+    null,
+  )
   const [autoBusy, setAutoBusy] = useState(false)
   const [autoMessage, setAutoMessage] = useState<string | null>(null)
   const player = useRef<HTMLVideoElement>(null)
@@ -48,6 +51,7 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
       zoom: s.clip.zoom,
       pan_x: s.clip.pan_x,
       pan_y: s.clip.pan_y,
+      captions: s.clip.captions,
     })
   }, [])
 
@@ -74,7 +78,8 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
             !want ||
             (Math.abs(s.clip.start_s - want.start) < 0.06 &&
               Math.abs(s.clip.end_s - want.end) < 0.06 &&
-              sameFraming(s.clip, want))
+              sameFraming(s.clip, want) &&
+              s.clip.captions === want.captions)
           if (ok) {
             setNotice('Nova versão pronta.')
             setForm((f) => f && { ...f, start: s.clip.start_s, end: s.clip.end_s })
@@ -107,7 +112,9 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
   const timesChanged =
     Math.abs(form.start - clip.start_s) > 0.05 || Math.abs(form.end - clip.end_s) > 0.05
   const framingChanged = !sameFraming(form, clip)
-  const needsRender = timesChanged || framingChanged
+  const captionsChanged = form.captions !== clip.captions
+  const needsRender = timesChanged || framingChanged || captionsChanged
+  const captionStyle = studio.caption_style
   const maxEnd = studio.duration_s ?? Infinity
   const timeError =
     form.end <= form.start
@@ -166,10 +173,11 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
         zoom: form.zoom,
         pan_x: form.pan_x,
         pan_y: form.pan_y,
+        captions: form.captions,
       })
       if (s.render_job) {
-        const { start, end, zoom, pan_x, pan_y } = form
-        requested.current = { start, end, zoom, pan_x, pan_y }
+        const { start, end, zoom, pan_x, pan_y, captions } = form
+        requested.current = { start, end, zoom, pan_x, pan_y, captions }
       }
       setStudio(s)
       setForm((f) => f && { ...f, hashtags: s.clip.hashtags.map((h) => `#${h}`).join(' ') })
@@ -251,6 +259,7 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
                   time={form.start + Math.min(1, length / 2)}
                   framing={form}
                   frameUrl={studio.frame_url}
+                  caption={form.captions && captionStyle.enabled ? captionStyle : null}
                 />
               )}
               <FramingControls
@@ -261,6 +270,20 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
                 autoMessage={autoMessage}
               />
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.captions}
+                onChange={(e) => set({ captions: e.target.checked })}
+                className="accent-pink-500"
+              />
+              Legenda queimada neste corte
+              {!captionStyle.enabled && (
+                <span className="text-xs text-zinc-500">
+                  (desligada para todos na aba Moldura)
+                </span>
+              )}
+            </label>
           </div>
 
           <div>

@@ -1,5 +1,7 @@
-"""Render a 9:16 clip: blurred fill background, centered original, optional frame overlay."""
+"""Render a 9:16 clip: blurred fill background, centered original, optional frame overlay,
+optional burned-in captions (.ass, on top of everything)."""
 
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,7 +40,10 @@ def build_cut_command(
     frame: Path | None,
     encoder: str,
     framing: Framing = Framing(),
+    subtitles: str | None = None,
 ) -> list[str]:
+    """`subtitles`: .ass file name relative to ffmpeg's working directory (a bare name avoids
+    escaping Windows drive colons inside the filter graph)."""
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
            "-ss", f"{start:.2f}", "-t", f"{end - start:.2f}", "-i", str(src)]  # fmt: skip
     graph = (
@@ -50,6 +55,8 @@ def build_cut_command(
     if frame is not None:
         cmd += ["-i", str(frame)]
         graph += f"[base];[1:v]scale={W}:{H}[fr];[base][fr]overlay=0:0"
+    if subtitles is not None:
+        graph += f",ass={subtitles}"
     graph += ",format=yuv420p[v]"
     cmd += [
         "-filter_complex", graph,
@@ -72,14 +79,23 @@ def render_clip(
     frame: Path | None,
     encoder_choice: str = "auto",
     framing: Framing = Framing(),
+    ass: str | None = None,
 ) -> Path:
+    """`ass`: content of a caption file to burn in (see pipeline/captions.build_ass)."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     encoder = pick_encoder(encoder_choice)
-    try:
-        run(build_cut_command(src, dst, start, end, frame, encoder, framing))
-    except CommandError:
-        if encoder == SW_ENCODER:
-            raise
-        # AMF hiccup: CPU retry
-        run(build_cut_command(src, dst, start, end, frame, SW_ENCODER, framing))
+    with tempfile.TemporaryDirectory() as tmp:
+        subs = None
+        if ass is not None:
+            subs = "captions.ass"
+            (Path(tmp) / subs).write_text(ass, encoding="utf-8")
+        # ffmpeg runs inside tmp: every other path must be absolute
+        args = (src.resolve(), dst.resolve(), start, end, frame.resolve() if frame else None)
+        try:
+            run(build_cut_command(*args, encoder, framing, subs), cwd=Path(tmp))
+        except CommandError:
+            if encoder == SW_ENCODER:
+                raise
+            # AMF hiccup: CPU retry
+            run(build_cut_command(*args, SW_ENCODER, framing, subs), cwd=Path(tmp))
     return dst

@@ -8,8 +8,9 @@ from app.config import get_settings
 from app.jobs import queue
 from app.jobs.worker import handler
 from app.models import Clip, FrameTemplate, Job, JobStatus, SourceVideo, utcnow
-from app.pipeline import cut, download, energy, score, transcribe
-from app.store import get_app_config
+from app.pipeline import captions, cut, download, energy, score, transcribe
+from app.pipeline.types import Word
+from app.store import AppConfig, get_app_config, get_caption_style
 
 PROCESS_VIDEO = "process_video"
 
@@ -23,6 +24,32 @@ def _default_frame(session: Session) -> Path | None:
     if frame and Path(frame.overlay_path).exists():
         return Path(frame.overlay_path)
     return None
+
+
+class _Captioner:
+    """Builds the .ass for a clip; loads Whisper once per job and only if a clip needs it."""
+
+    def __init__(self, session: Session, cfg: AppConfig, src: Path, language: str | None):
+        self.style = get_caption_style(session)
+        self.cfg, self.src, self.language = cfg, src, language
+        self._model: object | None = None
+
+    def words(self, clip: Clip, start: float, end: float) -> list[Word]:
+        """Cached words if they cover [start, end]; otherwise Whisper on that window."""
+        if clip.caption_words is not None and clip.caption_range:
+            lo, hi = clip.caption_range
+            if lo <= start + 0.01 and hi >= end - 0.01:
+                return [Word(**w) for w in clip.caption_words]
+        if self._model is None:
+            self._model = captions.load_whisper(self.cfg.whisper_model)
+        words = captions.transcribe_words(self._model, self.src, start, end, self.language)
+        clip.caption_words = [dict(w) for w in words]
+        clip.caption_range = [start, end]
+        return words
+
+    def ass(self, clip: Clip, start: float, end: float) -> str:
+        words = captions.clip_words(self.words(clip, start, end), start, end)
+        return captions.build_ass(words, end - start, self.style)
 
 
 @handler(PROCESS_VIDEO)
@@ -94,14 +121,20 @@ def process_video(session: Session, job: Job) -> None:
         return
 
     frame = _default_frame(session)
+    captioner = _Captioner(session, cfg, path, video.language)
     for i, idea in enumerate(ideas, 1):
-        _step(session, job, 0.6 + 0.4 * (i - 1) / len(ideas), f"Cortando {i} de {len(ideas)}")
+        progress = 0.6 + 0.4 * (i - 1) / len(ideas)
         dst = settings.clips_dir / f"{video.youtube_id}_{idea.start_s:.0f}-{idea.end_s:.0f}.mp4"
-        cut.render_clip(path, dst, idea.start_s, idea.end_s, frame, cfg.video_encoder)
         # reprocessing the same video must not duplicate a clip (keeps its status)
         clip = session.exec(select(Clip).where(Clip.file_path == str(dst))).first() or Clip(
             source_video_id=video.id or 0, start_s=idea.start_s, end_s=idea.end_s
         )
+        ass = None
+        if captioner.style.enabled and clip.captions:
+            _step(session, job, progress, f"Legendando {i} de {len(ideas)}")
+            ass = captioner.ass(clip, idea.start_s, idea.end_s)
+        _step(session, job, progress, f"Cortando {i} de {len(ideas)}")
+        cut.render_clip(path, dst, idea.start_s, idea.end_s, frame, cfg.video_encoder, ass=ass)
         clip.title = idea.title
         clip.description = idea.description
         clip.hashtags = idea.hashtags
@@ -149,6 +182,7 @@ def render_clip(session: Session, job: Job) -> None:
         float(p.get("pan_x", clip.pan_x)),
         float(p.get("pan_y", clip.pan_y)),
     )
+    want_captions = bool(p.get("captions", clip.captions))
     queue.update(session, job, payload={**job.payload, "title": f"Estúdio: {clip.title}"})
 
     src = Path(video.file_path) if video.file_path else None
@@ -159,17 +193,24 @@ def render_clip(session: Session, job: Job) -> None:
         session.add(video)
         session.commit()
 
+    cfg = get_app_config(session)
+    captioner = _Captioner(session, cfg, src, video.language)
+    ass = None
+    if captioner.style.enabled and want_captions:
+        _step(session, job, 0.25, "Legendando")
+        ass = captioner.ass(clip, start, end)
+
     _step(session, job, 0.4, "Renderizando")
     dst = studio_clip_path(video.youtube_id, clip.id or 0, start, end)
     if clip.file_path and Path(clip.file_path) == dst:
         # same times (e.g. new frame): never overwrite the file the user may be watching
         dst = dst.with_name(f"{dst.stem}_v{job.id}{dst.suffix}")
-    encoder = get_app_config(session).video_encoder
-    cut.render_clip(src, dst, start, end, _default_frame(session), encoder, framing)
+    cut.render_clip(src, dst, start, end, _default_frame(session), cfg.video_encoder, framing, ass)
 
     old = Path(clip.file_path) if clip.file_path else None
     clip.start_s, clip.end_s, clip.file_path = start, end, str(dst)
     clip.zoom, clip.pan_x, clip.pan_y = framing.zoom, framing.pan_x, framing.pan_y
+    clip.captions = want_captions
     session.add(clip)
     session.commit()
     if old and old != dst and old.exists():

@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_serializer
 
 from app.models import Account, Clip, ClipStatus, Job, JobStatus, SourceVideo
+from app.pipeline.captions import CaptionStyle
 
 
 class _UtcModel(BaseModel):
@@ -49,6 +50,7 @@ class ClipOut(_UtcModel):
     zoom: float = 1.0
     pan_x: float = 0.0
     pan_y: float = 0.0
+    captions: bool = True
     video_url: str | None
     created_at: datetime
     account_id: int | None
@@ -72,6 +74,7 @@ class ClipOut(_UtcModel):
             zoom=c.zoom,
             pan_x=c.pan_x,
             pan_y=c.pan_y,
+            captions=c.captions,
             video_url=f"/api/media/clips/{Path(c.file_path).name}" if c.file_path else None,
             created_at=c.created_at,
             account_id=c.account_id,
@@ -166,6 +169,7 @@ class StudioOut(_UtcModel):
     min_s: float
     max_s: float
     frame_url: str | None = None  # frame in use, for the framing preview
+    caption_style: CaptionStyle = CaptionStyle()  # for the preview; .enabled is global
 
 
 class ClipEditIn(BaseModel):
@@ -177,6 +181,7 @@ class ClipEditIn(BaseModel):
     zoom: float = Field(1.0, ge=1.0, le=3.0)
     pan_x: float = Field(0.0, ge=-1.0, le=1.0)
     pan_y: float = Field(0.0, ge=-1.0, le=1.0)
+    captions: bool | None = None  # None = keep the clip's
 
 
 class AutoFrameOut(BaseModel):

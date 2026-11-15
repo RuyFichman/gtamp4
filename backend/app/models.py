@@ -55,6 +55,11 @@ class Clip(SQLModel, table=True):
     zoom: float = 1.0
     pan_x: float = 0.0
     pan_y: float = 0.0
+    # burned-in captions: on/off per clip + cached word timings (source seconds) and the
+    # [start, end] window they cover, so a re-render only runs Whisper again when needed
+    captions: bool = True
+    caption_words: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
+    caption_range: list[float] | None = Field(default=None, sa_column=Column(JSON))
     status: ClipStatus = Field(default=ClipStatus.PENDING_REVIEW, index=True)
     account_id: int | None = Field(default=None, foreign_key="account.id")
     post_url: str | None = None

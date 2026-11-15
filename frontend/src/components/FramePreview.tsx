@@ -1,7 +1,15 @@
-/** 9:16 mock of the final clip: sample video (or a placeholder layout) under the overlay. */
-type Props = { overlayUrl: string | null; sampleVideoUrl: string | null; className?: string }
+import type { CaptionStyle } from '../lib/types'
+import { CaptionSample } from './CaptionSample'
 
-export function FramePreview({ overlayUrl, sampleVideoUrl, className = '' }: Props) {
+/** 9:16 mock of the final clip: sample video (or a placeholder layout) under the overlay. */
+type Props = {
+  overlayUrl: string | null
+  sampleVideoUrl: string | null
+  caption?: CaptionStyle | null
+  className?: string
+}
+
+export function FramePreview({ overlayUrl, sampleVideoUrl, caption, className = '' }: Props) {
   return (
     <div
       className={`relative aspect-[9/16] overflow-hidden rounded-md bg-zinc-900 ring-1 ring-white/10 ${className}`}
@@ -26,6 +34,7 @@ export function FramePreview({ overlayUrl, sampleVideoUrl, className = '' }: Pro
       {overlayUrl && (
         <img src={overlayUrl} alt="" className="pointer-events-none absolute inset-0 size-full" />
       )}
+      {caption && <CaptionSample style={caption} />}
     </div>
   )
 }

@@ -27,6 +27,7 @@ from app.models import Account, Clip, ClipStatus, FrameTemplate, SourceVideo, ut
 from app.pipeline import framing as framing_detect
 from app.pipeline.cut import Framing
 from app.pipeline.proc import CommandError
+from app.store import get_caption_style
 
 router = APIRouter(prefix="/api/clips", tags=["clips"])
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -112,6 +113,7 @@ def _studio(session: Session, clip: Clip, video: SourceVideo) -> StudioOut:
         min_s=STUDIO_MIN_S,
         max_s=STUDIO_MAX_S,
         frame_url=_frame_url(session),
+        caption_style=get_caption_style(session),
     )
 
 
@@ -148,6 +150,8 @@ def edit_clip(clip_id: int, body: ClipEditIn, session: SessionDep) -> StudioOut:
     times_changed = abs(start - clip.start_s) > 0.05 or abs(end - clip.end_s) > 0.05
     framing = Framing(round(body.zoom, 2), round(body.pan_x, 3), round(body.pan_y, 3))
     framing_changed = framing != Framing(clip.zoom, clip.pan_x, clip.pan_y)
+    captions = clip.captions if body.captions is None else body.captions
+    captions_changed = captions != clip.captions
     if times_changed:
         limit = video.duration_s or float("inf")
         if start < 0 or end > limit + 0.5 or end <= start:
@@ -158,7 +162,7 @@ def edit_clip(clip_id: int, body: ClipEditIn, session: SessionDep) -> StudioOut:
             raise HTTPException(
                 400, f"O corte precisa ter entre {STUDIO_MIN_S:.0f} e {STUDIO_MAX_S:.0f} segundos."
             )
-    needs_render = times_changed or framing_changed
+    needs_render = times_changed or framing_changed or captions_changed
     if needs_render and clip.id in pending_renders(session):
         raise HTTPException(409, "Esse corte já está renderizando. Espere terminar.")
 
@@ -177,6 +181,7 @@ def edit_clip(clip_id: int, body: ClipEditIn, session: SessionDep) -> StudioOut:
             "zoom": framing.zoom,
             "pan_x": framing.pan_x,
             "pan_y": framing.pan_y,
+            "captions": captions,
         }
         queue.enqueue(session, RENDER_CLIP, payload)
     session.refresh(clip)

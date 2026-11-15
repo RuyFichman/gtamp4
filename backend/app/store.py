@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from app.config import get_settings
 from app.models import Setting
+from app.pipeline.captions import CaptionStyle
 
 
 class RadarConfig(BaseModel):
@@ -84,3 +85,12 @@ def get_app_config(session: Session) -> AppConfig:
 
 def set_app_config(session: Session, config: AppConfig) -> None:
     set_value(session, "app_config", config.model_dump_json())
+
+
+def get_caption_style(session: Session) -> CaptionStyle:
+    raw = get_value(session, "caption_style")
+    return CaptionStyle.model_validate_json(raw) if raw else CaptionStyle()
+
+
+def set_caption_style(session: Session, style: CaptionStyle) -> None:
+    set_value(session, "caption_style", style.model_dump_json())

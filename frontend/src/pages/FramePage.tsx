@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
+import { CaptionSettings } from '../components/CaptionSettings'
 import { FrameCard } from '../components/FrameCard'
 import { FrameUpload } from '../components/FrameUpload'
 import { api } from '../lib/api'
-import type { Frames } from '../lib/types'
+import type { Captions, Frames } from '../lib/types'
 
 export function FramePage() {
   const [data, setData] = useState<Frames | null>(null)
+  const [captions, setCaptions] = useState<Captions | null>(null)
   const [sample, setSample] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmRerender, setConfirmRerender] = useState(false)
@@ -15,6 +17,10 @@ export function FramePage() {
     api
       .frames()
       .then(setData)
+      .catch((err: Error) => setError(err.message))
+    api
+      .captions()
+      .then(setCaptions)
       .catch((err: Error) => setError(err.message))
     // a real clip under the overlay shows how it will look (it may already carry an old frame)
     api
@@ -80,12 +86,21 @@ export function FramePage() {
         ))}
       </div>
 
+      {captions && (
+        <CaptionSettings
+          data={captions}
+          sampleVideoUrl={sample}
+          frameUrl={data.frames.find((f) => f.is_default)?.url ?? null}
+          onSaved={setCaptions}
+        />
+      )}
+
       <section className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-4 text-sm">
         <h3 className="font-semibold">Aplicar nos cortes que já existem</h3>
         <p className="text-zinc-400">
           Renderiza de novo os {data.live_clips} corte(s) aguardando aprovação ou postagem com a
-          moldura em uso. Os já postados ou recusados não são tocados. Cada corte leva alguns
-          segundos.
+          moldura e a legenda em uso. Os já postados ou recusados não são tocados. Cada corte leva
+          alguns segundos (a primeira legenda de cada corte leva mais: o Whisper ouve o trecho).
         </p>
         {message && <p className="text-emerald-400">{message}</p>}
         {confirmRerender ? (

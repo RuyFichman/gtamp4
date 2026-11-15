@@ -111,11 +111,22 @@ def test_render_job_updates_clip_and_removes_old_file(
         handlers, "studio_clip_path", lambda yid, cid, s, e: tmp_path / f"{yid}_{cid}_{s}-{e}.mp4"
     )
 
-    def fake_render(src: Path, dst: Path, start: float, end: float, *_: object) -> Path:
+    asses: list[str | None] = []
+
+    def fake_render(src: Path, dst: Path, start: float, end: float, *args: object) -> Path:
+        asses.append(args[3])  # type: ignore[arg-type]  # frame, encoder, framing, ass
         dst.write_bytes(b"new")
         return dst
 
+    whisper_calls: list[tuple[float, float]] = []
+
+    def fake_words(_m: object, _src: Path, start: float, end: float, _lang: object) -> list:
+        whisper_calls.append((start, end))
+        return [{"start": start + 1, "end": start + 1.5, "word": "olá"}]
+
     monkeypatch.setattr(handlers.cut, "render_clip", fake_render)
+    monkeypatch.setattr(handlers.captions, "load_whisper", lambda size: object())
+    monkeypatch.setattr(handlers.captions, "transcribe_words", fake_words)
     with Session(engine) as s:
         old_path = Path(s.exec(select(Clip)).one().file_path or "")
         job = queue.enqueue(s, handlers.RENDER_CLIP, {"clip_id": 1, "start_s": 5.0, "end_s": 25.0})
@@ -133,6 +144,16 @@ def test_render_job_updates_clip_and_removes_old_file(
         assert Path(clip.file_path or "").name == f"{first.stem}_v{job.id}.mp4"
         assert not first.exists()
 
+        # captions burned in both times, Whisper ran once (words cached on the clip)
+        assert all(a and "OLÁ" in a for a in asses)
+        assert whisper_calls == [(5.0, 25.0)]
+
+        # captions turned off in the Studio: no .ass, and the clip remembers it
+        payload = {"clip_id": 1, "start_s": 5.0, "end_s": 25.0, "captions": False}
+        handlers.render_clip(s, queue.enqueue(s, handlers.RENDER_CLIP, payload))
+        assert asses[-1] is None
+        assert s.exec(select(Clip)).one().captions is False
+
 
 def test_clean_hashtags() -> None:
     assert clean_hashtags(["#a, b", "A", " #c "]) == ["a", "b", "c"]
@@ -149,3 +170,13 @@ def test_framing_change_alone_queues_render(client: TestClient, engine: Engine) 
         job = s.exec(select(Job)).one()
         assert job.payload["zoom"] == 2.0 and job.payload["start_s"] == start
     assert client.patch("/api/clips/1", json=body | {"zoom": 5}).status_code == 422
+
+
+def test_captions_toggle_alone_queues_render(client: TestClient, engine: Engine) -> None:
+    with Session(engine) as s:
+        clip = s.exec(select(Clip)).one()
+        start, end = clip.start_s, clip.end_s
+    out = client.patch("/api/clips/1", json=edit(start_s=start, end_s=end) | {"captions": False})
+    assert out.json()["render_job"] is not None
+    with Session(engine) as s:
+        assert s.exec(select(Job)).one().payload["captions"] is False

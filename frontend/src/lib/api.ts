@@ -3,6 +3,8 @@ import type {
   AutoFrame,
   AppConfig,
   AppSettings,
+  Captions,
+  CaptionStyle,
   CleanupPreview,
   AccountInput,
   Clip,
@@ -67,6 +69,9 @@ export const api = {
     request<Frames>('/frames/default', { method: 'PUT', body: JSON.stringify({ frame_id: frameId }) }),
   deleteFrame: (id: number) => request<Frames>(`/frames/${id}`, { method: 'DELETE' }),
   rerenderWithFrame: () => post<{ queued: number }>('/frames/rerender'),
+  captions: () => request<Captions>('/captions'),
+  saveCaptions: (style: CaptionStyle) =>
+    request<Captions>('/captions', { method: 'PUT', body: JSON.stringify(style) }),
   warmup: () => request<Warmup[]>('/warmup'),
   startWarmup: (accountId: number) => post<Warmup>(`/warmup/${accountId}/start`),
   stopWarmup: (accountId: number) => post<Warmup>(`/warmup/${accountId}/stop`),

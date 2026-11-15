@@ -25,7 +25,8 @@ Tudo roda na máquina do usuário. Não há deploy em nuvem, login nem multi-ten
 | Fila de jobs | Tabela `job` no SQLite + um worker em thread (sobrevive a reinícios) |
 | Agendador | **APScheduler** (só enfileira: coleta do Radar, atualização de views) |
 | Download | **yt-dlp** (vídeo, metadados, legendas) |
-| Transcrição | 1º legendas do YouTube via yt-dlp; fallback **faster-whisper** em CPU (`int8`, modelo escolhido em Ajustes, padrão `small`) |
+| Transcrição | 1º legendas do YouTube via yt-dlp; fallback **faster-whisper** em CPU (`int8`, modelo escolhido em Ajustes, padrão `small`). O áudio vai para o Whisper já decodificado pelo ffmpeg (`transcribe.decode_audio`) |
+| Legenda queimada | Whisper com `word_timestamps` só no trecho do corte → `.ass` (`pipeline/captions.py`) → filtro `ass` do ffmpeg (libass) |
 | IA | **API do Claude** (SDK `anthropic`): uma chamada por vídeo com o modelo de cortes (padrão Sonnet) que escolhe trechos, dá a nota e escreve título/descrição; o modelo de triagem (padrão Haiku) filtra vídeos do Radar. Saída estruturada via `beta.messages.parse` + Pydantic. Sem chave, cai numa heurística por volume |
 | Energia da fala | ffmpeg → PCM → **numpy** (RMS por segundo, `pipeline/energy.py`), passada à IA como "energia 0-9" por linha |
 | Edição de vídeo | **ffmpeg** / **ffprobe** (CLI, via `pipeline/proc.run`) |
@@ -65,7 +66,7 @@ gtamp4/
 │   │   ├── api/           # um arquivo de rotas por aba + schemas.py (modelos de resposta)
 │   │   ├── jobs/          # queue, worker, handlers (process_video, render_clip), radar_jobs
 │   │   └── pipeline/      # download, transcribe, energy, score, triage, radar,
-│   │                      # cut, framing, encoder, proc, types (não lê o banco)
+│   │                      # captions, cut, framing, encoder, proc, types (não lê o banco)
 │   └── tests/
 ├── frontend/
 │   ├── package.json
@@ -90,7 +91,7 @@ gtamp4/
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
 | **Aquecimento** | Checklist **manual** de 14 dias por conta (`app/warmup.py`: 3 fases, tarefas diárias e "uma vez", tabela `warmupcheck`, dia local da máquina). Só registra o que o usuário marcou; nunca automatizar (ver Regras) |
 | **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo e limite diário configuráveis (ver seção Radar) |
-| **Moldura** | PNGs 9:16 com transparência (`app/frames.py`: valida assinatura, proporção, largura mínima e alfa só com stdlib; arquivos em `data/frames/`). Uma moldura "em uso" (ou nenhuma) vale para renders novos; "Re-renderizar cortes" enfileira `render_clip` para os pendentes/aprovados. Prévia em CSS por cima de um corte real |
+| **Moldura** | PNGs 9:16 com transparência (`app/frames.py`: valida assinatura, proporção, largura mínima e alfa só com stdlib; arquivos em `data/frames/`). Uma moldura "em uso" (ou nenhuma) vale para renders novos; "Re-renderizar cortes" enfileira `render_clip` para os pendentes/aprovados. Prévia em CSS por cima de um corte real. Também o estilo da **legenda queimada** (`CaptionStyle`, tabela `setting`, chave `caption_style`): liga/desliga global, fonte, tamanho, contorno, cores, altura, palavras por vez, maiúsculas |
 | **Ajustes** | `AppConfig` (`store.py`, tabela `setting`): duração mín/máx e nº de cortes, encoder, modelo do Whisper, modelos do Claude (padrões vêm do `.env`). Os jobs leem a config e passam explicitamente ao pipeline (o pipeline não lê o banco). A chave da API **não** é editável aqui (só mostra se está configurada). Também: limpeza dos vídeos originais cujos cortes já foram todos postados/recusados (bloqueada com jobs na fila) |
 
 O **Estúdio** não é aba: é um painel (`StudioModal`) aberto pelos cards (ver seção Estúdio).
@@ -100,7 +101,7 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 ## Modelo de dados (resumo)
 
 - `SourceVideo`: youtube_id, url, título, canal, idioma, duração, views, views_checked_at, transcrição, file_path (some quando a limpeza apaga o original).
-- `Clip`: source_video_id, start_s, end_s, título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, zoom/pan_x/pan_y (enquadramento), account_id, post_url, posted_at.
+- `Clip`: source_video_id, start_s, end_s, título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, zoom/pan_x/pan_y (enquadramento), captions (legenda liga/desliga) + caption_words/caption_range (cache das palavras do Whisper e a janela que cobrem), account_id, post_url, posted_at.
 - `Job`: kind, payload (JSON), status, progresso, mensagem, erro, tentativas, timestamps.
 - `Account` (+ `warmup_started_on`), `WarmupCheck`, `FrameTemplate` (name, overlay_path, is_default), `RadarQuery`, `RadarCandidate`, `Setting` (chave/valor JSON).
 
@@ -112,7 +113,7 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 1. `download`: yt-dlp baixa vídeo (máx. 1080p), metadados e legendas (manual > automática, **no idioma original**).
 2. `transcribe`: usa a legenda; se não houver, faster-whisper em CPU. Resultado: segmentos com timestamps.
 3. `energy` + `score`: mede o volume por segundo; Claude recebe transcrição anotada com energia + metadados e devolve trechos (start, end, potential, reason, title, description, hashtags). `sanitize()` aplica os `ClipLimits` dos Ajustes (padrão 12–75 s, até 5 cortes).
-4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado, com o enquadramento do corte), aplica a moldura em uso se houver, normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
+4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado, com o enquadramento do corte), aplica a moldura em uso se houver, queima a legenda por cima de tudo (se ligada no estilo e no corte), normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
 5. Cria `Clip` com status `pending_review` só depois do arquivo renderizado (reprocessar o mesmo vídeo não duplica cortes).
 
 Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
@@ -123,6 +124,7 @@ Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 - `GET /api/clips/{id}/studio`: corte, vídeo original (`/api/media/videos/`, com Range, então dá para pular no player), transcrição, job de render pendente e a moldura em uso (`frame_url`).
 - `PATCH /api/clips/{id}`: o texto é salvo na hora. Início/fim novos (3 a 180 s) ou enquadramento novo viram um job `render_clip`; o `Clip` só muda depois do render dar certo. O arquivo novo se chama `{youtube_id}_{clip_id}_{start}-{end}.mp4` (com `_v{job_id}` se o nome repetir, ex.: só trocou a moldura ou o zoom); o antigo é apagado se nenhum outro corte usa. Um render por corte de cada vez (409).
 - **Enquadramento:** `Clip.zoom` (1–3) e `pan_x`/`pan_y` (-1..1) mudam só o vídeo do meio (`cut.Framing`, `foreground_filter`: escala para 1080·zoom e recorta na tela 1080x1920). Prévia em CSS com a mesma geometria (`FramingPreview`). "Automático" (`GET /api/clips/{id}/autoframe`, `pipeline/framing.py`) usa `cropdetect` e só acha barras pretas. Jobs `render_clip` sem as chaves de enquadramento (ex.: re-render da Moldura) mantêm o do corte.
+- **Legenda:** caixa "Legenda queimada neste corte" (`Clip.captions`); mudar só ela também vira `render_clip` (`captions` no payload; sem a chave, vale a do corte). O render reaproveita `caption_words` se a janela salva cobre o novo início/fim; senão roda o Whisper de novo no trecho. Texto sempre no idioma original.
 - Se o vídeo original foi apagado do disco, o job baixa de novo.
 
 ## Radar
@@ -151,6 +153,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 | `/api/warmup` | lista, `POST /{account_id}/start` / `stop` / `check` |
 | `/api/radar` | estado, `PUT /config`, `POST /scan`, `queries` (CRUD), `candidates`, `POST /candidates/{id}/send` |
 | `/api/frames` | lista, `POST` (multipart: name + file), `PUT /default`, `DELETE /{id}`, `POST /rerender` |
+| `/api/captions` | estilo da legenda queimada (`GET`/`PUT`, com padrões e fontes) |
 | `/api/settings`, `/api/maintenance/originals` | Ajustes (`GET`/`PUT`); prévia e `POST /delete` da limpeza |
 
 ## Regras
@@ -200,6 +203,9 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 - O YouTube às vezes responde "confirm you're not a bot" ou "video unavailable". `proc.explain_error()` põe uma dica em pt-BR acima do erro cru.
 - O prompt da IA é em português; sem o idioma explícito, a IA escrevia títulos de vídeos em inglês em português. Por isso `plan_with_claude` recebe `language` e o `ClipPlan` tem `video_language` preenchido antes dos cortes. Só `reason` é em pt-BR. Não remova isso.
 - `get_settings()` tem `lru_cache`: teste que muda `DATA_DIR` precisa chamar `get_settings.cache_clear()`.
+- faster-whisper 1.2 abre arquivos com PyAV usando `metadata_errors`, que o `av` 19 não aceita: nunca passe caminho ao Whisper, passe o array de `transcribe.decode_audio`.
+- O filtro `ass` do ffmpeg não lida bem com `C:\` no caminho: `cut.render_clip` escreve `captions.ass` numa pasta temporária e roda o ffmpeg com `cwd` nela (por isso os outros caminhos viram absolutos).
+- As fontes da legenda precisam existir no Windows (lista fixa em `captions.FONTS`); o libass troca por outra se não achar.
 - `api.ts` só põe `Content-Type: application/json` quando o corpo é string; upload com `FormData` define o próprio boundary.
 - Re-render com o mesmo início/fim gera nome com `_v{job_id}` para não sobrescrever o arquivo que pode estar tocando no navegador.
 
@@ -222,5 +228,6 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 3. ~~Radar com coleta automática + atualização de views~~ feito.
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
 5. ~~Estúdio (com zoom/enquadramento)~~, ~~Painel~~, ~~Ajustes~~, ~~Aquecimento~~ e ~~Moldura~~ feitos.
+6. ~~Legenda queimada estilo TikTok~~ feita.
 
-Próximos candidatos: ver `docs/BACKLOG.md` (legenda queimada, detecção de bordas desfocadas).
+Próximos candidatos: ver `docs/BACKLOG.md` (detecção de bordas desfocadas).

@@ -44,6 +44,7 @@ export type Clip = {
   zoom: number
   pan_x: number
   pan_y: number
+  captions: boolean
   video_url: string | null
   created_at: string
   account_id: number | null
@@ -64,6 +65,7 @@ export type Studio = {
   min_s: number
   max_s: number
   frame_url: string | null
+  caption_style: CaptionStyle
 }
 
 export type ClipEdit = {
@@ -75,11 +77,26 @@ export type ClipEdit = {
   zoom: number
   pan_x: number
   pan_y: number
+  captions?: boolean
 }
 
 export type Framing = { zoom: number; pan_x: number; pan_y: number }
 
 export type AutoFrame = Framing & { found: boolean; message: string }
+
+export type CaptionStyle = {
+  enabled: boolean
+  font: string
+  size: number
+  color: string
+  highlight: string
+  outline: number
+  position_y: number
+  max_words: number
+  uppercase: boolean
+}
+
+export type Captions = { style: CaptionStyle; defaults: CaptionStyle; fonts: string[] }
 
 export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'outra'
 

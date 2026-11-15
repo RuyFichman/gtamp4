@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Framing } from '../lib/types'
+import type { CaptionStyle, Framing } from '../lib/types'
+import { CaptionSample } from './CaptionSample'
 
-type Props = { videoUrl: string; time: number; framing: Framing; frameUrl: string | null }
+type Props = {
+  videoUrl: string
+  time: number
+  framing: Framing
+  frameUrl: string | null
+  caption: CaptionStyle | null
+}
 
 const BOX_RATIO = 16 / 9 // box height / width (9:16 output)
 
@@ -9,7 +16,7 @@ const BOX_RATIO = 16 / 9 // box height / width (9:16 output)
  * Same geometry as the ffmpeg render (pipeline/cut.py): blurred fill, middle video scaled to
  * zoom x box width, cropped to the box and positioned by pan (-1..1), frame on top.
  */
-export function FramingPreview({ videoUrl, time, framing, frameUrl }: Props) {
+export function FramingPreview({ videoUrl, time, framing, frameUrl, caption }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const bg = useRef<HTMLVideoElement>(null)
   const fg = useRef<HTMLVideoElement>(null)
@@ -73,6 +80,7 @@ export function FramingPreview({ videoUrl, time, framing, frameUrl }: Props) {
       {frameUrl && (
         <img src={frameUrl} alt="" className="pointer-events-none absolute inset-0 size-full" />
       )}
+      {caption && <CaptionSample style={caption} />}
     </div>
   )
 }

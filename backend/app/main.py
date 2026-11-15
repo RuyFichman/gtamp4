@@ -10,6 +10,7 @@ import app.jobs.radar_jobs  # noqa: F401
 from app import scheduler
 from app.api import (
     accounts,
+    captions,
     clips,
     frames,
     jobs,
@@ -53,6 +54,7 @@ for router in (
     settings.router,
     warmup.router,
     frames.router,
+    captions.router,
 ):
     app.include_router(router)
 app.mount("/api/media/clips", StaticFiles(directory=config.clips_dir), name="clips")
