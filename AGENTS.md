@@ -59,14 +59,15 @@ gtamp4/
 │   │   ├── models.py      # tabelas SQLModel
 │   │   ├── store.py       # config editável na UI (tabela setting): AppConfig, RadarConfig
 │   │   ├── stats.py       # números do Painel
-│   │   ├── feedback.py    # motivos de recusa + exemplos do editor para o prompt da IA
+│   │   ├── feedback.py    # motivos de recusa, exemplos do editor para o prompt da IA,
+│   │   │                  # histórico de aprovação por canal (Radar)
 │   │   ├── warmup.py      # checklist do Aquecimento
 │   │   ├── frames.py      # molduras (validação do PNG, padrão, re-render)
 │   │   ├── maintenance.py # limpeza de vídeos originais
 │   │   ├── scheduler.py
 │   │   ├── api/           # um arquivo de rotas por aba + schemas.py (modelos de resposta)
 │   │   ├── jobs/          # queue, worker, handlers (process_video, render_clip), radar_jobs
-│   │   └── pipeline/      # download, transcribe, energy, score, triage, radar,
+│   │   └── pipeline/      # download, transcribe, energy, score, triage, radar, ranking,
 │   │                      # boundaries, captions, cut, framing, encoder, proc, types
 │   │                      # (não lê o banco)
 │   └── tests/
@@ -92,7 +93,7 @@ gtamp4/
 | **Postagem** | Cortes aprovados aguardando postagem manual: baixar vídeo, copiar título/descrição/hashtags, escolher a conta e marcar como "postado" (com link do post, opcional). Lista dos já postados |
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
 | **Aquecimento** | Checklist **manual** de 14 dias por conta (`app/warmup.py`: 3 fases, tarefas diárias e "uma vez", tabela `warmupcheck`, dia local da máquina). Só registra o que o usuário marcou; nunca automatizar (ver Regras) |
-| **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo e limite diário configuráveis (ver seção Radar) |
+| **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo e limite diário configuráveis (ver seção Radar). A lista mostra inscritos, views por hora, o histórico do canal ("Canal: X de Y cortes aprovados por você") e a posição na fila de espera |
 | **Moldura** | PNGs 9:16 com transparência (`app/frames.py`: valida assinatura, proporção, largura mínima e alfa só com stdlib; arquivos em `data/frames/`). Uma moldura "em uso" (ou nenhuma) vale para renders novos; "Re-renderizar cortes" enfileira `render_clip` para os pendentes/aprovados. Prévia em CSS por cima de um corte real. Também o estilo da **legenda queimada** (`CaptionStyle`, tabela `setting`, chave `caption_style`): liga/desliga global, fonte, tamanho, contorno, cores, altura, palavras por vez, maiúsculas |
 | **Ajustes** | `AppConfig` (`store.py`, tabela `setting`): duração mín/máx e nº de cortes, encoder, modelo do Whisper, modelos do Claude (padrões vêm do `.env`). Os jobs leem a config e passam explicitamente ao pipeline (o pipeline não lê o banco). A chave da API **não** é editável aqui (só mostra se está configurada). Também: limpeza dos vídeos originais cujos cortes já foram todos postados/recusados (bloqueada com jobs na fila) |
 
@@ -105,7 +106,7 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 - `SourceVideo`: youtube_id, url, título, canal, idioma, duração, views, views_checked_at, transcrição, heatmap (gráfico "mais repetidos" do YouTube) e chapters (capítulos), file_path (some quando a limpeza apaga o original).
 - `Clip`: source_video_id, start_s, end_s, título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, reject_reason (chave de `feedback.REJECT_REASONS`, só quando recusado), zoom/pan_x/pan_y (enquadramento), captions (legenda liga/desliga) + caption_words/caption_range (cache das palavras do Whisper e a janela que cobrem), account_id, post_url, posted_at.
 - `Job`: kind, payload (JSON), status, progresso, mensagem, erro, tentativas, timestamps.
-- `Account` (+ `warmup_started_on`), `WarmupCheck`, `FrameTemplate` (name, overlay_path, is_default), `RadarQuery`, `RadarCandidate`, `Setting` (chave/valor JSON).
+- `Account` (+ `warmup_started_on`), `WarmupCheck`, `FrameTemplate` (name, overlay_path, is_default), `RadarQuery`, `RadarCandidate` (+ channel_id, published_at aproximado, subscribers, views_per_hour medido quando achado), `RadarChannel` (cache de inscritos por canal, 7 dias), `Setting` (chave/valor JSON).
 
 **Status de `Clip`:** `pending_review` → `approved` | `rejected` → `posted` (marcado manualmente pelo usuário).
 **Status de `Job`:** `queued` → `running` → `done` | `failed`. Ao iniciar o app, jobs `running` voltam para `queued` ("Retomando após reinício").
@@ -137,9 +138,15 @@ Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
   1. roda cada `RadarQuery` ativa (`pipeline/radar.py`, yt-dlp com `extract_flat`, sem baixar);
   2. ignora vídeos já vistos (`RadarCandidate`) ou já processados (`SourceVideo`);
   3. aplica o pré-filtro (duração 90 s a 3 h, sem live);
-  4. faz a triagem por título com o modelo de triagem (`pipeline/triage.py`; sem chave, regex "GTA 6/VI");
-  5. envia os aprovados para `process_video`, os mais vistos primeiro, até o **limite diário** (envios que falharam não contam);
-  6. quem fica "na espera" por mais de 3 dias é descartado.
+  4. busca os inscritos dos canais que passaram (`radar.channel_subscribers`, uma consulta rápida por canal; cache `RadarChannel` de 7 dias; busca por canal já traz o número). Falha não para o scan: fica sem inscritos e tenta no próximo;
+  5. faz a triagem por título com o modelo de triagem (`pipeline/triage.py`), que recebe o histórico do canal ("editor: X de Y cortes aprovados", de `feedback.channel_history`). Sem chave: regex "GTA 6/VI" e descarta canal com 6+ cortes avaliados e até 15% aprovados;
+  6. envia os da espera para `process_video` na ordem de `radar_jobs.waiting_queue`, até o **limite diário** (envios que falharam não contam);
+  7. quem fica "na espera" por mais de 3 dias é descartado.
+
+**Ordem da fila** (`pipeline/ranking.py`): `views por hora ÷ √inscritos × peso do canal`.
+- **Views por hora:** views ÷ horas desde a publicação, medidas quando o Radar achou o vídeo. A idade é aproximada ("há 9 horas", via `approximate_date` do yt-dlp), com mínimo de 1 h; sem data, conta como 48 h.
+- **Inscritos:** abaixo de 10 mil, contam como 10 mil; se o canal esconde o número, contam como 100 mil. A raiz fica entre "velocidade pura" (canal grande sempre ganha) e "views por inscrito" (qualquer canal minúsculo ganharia).
+- **Peso do canal:** aprovados (inclui postados) ÷ decididos daquele canal, suavizado com 5 decisões "médias" e comparado à taxa geral, ao quadrado, limitado a 0,25×–3×. Canal sem histórico vale 1×. Recusa por "Cortou no meio" não conta contra o canal (o erro foi do corte). O canal é casado pelo nome (`ranking.channel_key`: sem diferença de maiúsculas/espaços), porque `SourceVideo` não guarda o id do canal.
 - `RadarCandidate.status`: `rejected` | `waiting` | `sent`. "Cortar mesmo assim" na UI ignora triagem e limite.
 
 Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
@@ -154,7 +161,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 | `/api/clips` | lista por status/ordem, `GET /reject-reasons`, `POST /{id}/status` (com `reject_reason` ao recusar), `GET /{id}/download`, `GET /{id}/studio`, `PATCH /{id}`, `GET /{id}/autoframe` |
 | `/api/accounts` | CRUD |
 | `/api/warmup` | lista, `POST /{account_id}/start` / `stop` / `check` |
-| `/api/radar` | estado, `PUT /config`, `POST /scan`, `queries` (CRUD), `candidates`, `POST /candidates/{id}/send` |
+| `/api/radar` | estado, `PUT /config`, `POST /scan`, `queries` (CRUD), `candidates` (com `queue_position` e `channel_record`), `POST /candidates/{id}/send` |
 | `/api/frames` | lista, `POST` (multipart: name + file), `PUT /default`, `DELETE /{id}`, `POST /rerender` |
 | `/api/captions` | estilo da legenda queimada (`GET`/`PUT`, com padrões e fontes) |
 | `/api/settings`, `/api/maintenance/originals` | Ajustes (`GET`/`PUT`); prévia e `POST /delete` da limpeza |
@@ -210,6 +217,7 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 - O filtro `ass` do ffmpeg não lida bem com `C:\` no caminho: `cut.render_clip` escreve `captions.ass` numa pasta temporária e roda o ffmpeg com `cwd` nela (por isso os outros caminhos viram absolutos).
 - O Whisper roda em todo corte novo (para ajustar início/fim), mesmo com a legenda desligada; com ela ligada, é a mesma passada.
 - O "mais repetidos" vem da página do vídeo (`heatmap` do yt-dlp) e falta na maioria dos vídeos pequenos/novos; o prompt diz à IA que a coluna `replay` pode não existir.
+- A busca "plana" do yt-dlp não traz data de publicação nem inscritos: a data vem do texto "há 9 horas" só com `extractor_args: {"youtubetab": {"approximate_date": [""]}}` (`radar.LIST_OPTS`), e os inscritos vêm da página do canal. Candidatos achados antes disso não têm `views_per_hour` (o ranking estima com 48 h).
 - As fontes da legenda precisam existir no Windows (lista fixa em `captions.FONTS`); o libass troca por outra se não achar.
 - **Só um backend por vez.** O `queue.claim_next` não é atômico: dois servidores no mesmo `data/app.db` (ex.: um uvicorn órfão que sobrou depois de fechar o terminal) pegam o mesmo job e o rodam duas vezes. O órfão sem stdout ainda quebra yt-dlp/ffmpeg (`[Errno 22] Invalid argument`, ffmpeg código 3221225794). Antes de subir o dev server, confira se a porta 8000 está livre (`netstat -ano | findstr :8000`) e mate a árvore do processo antigo (`taskkill /T /F /PID ...`).
 - `api.ts` só põe `Content-Type: application/json` quando o corpo é string; upload com `FormData` define o próprio boundary.
@@ -236,5 +244,6 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 5. ~~Estúdio (com zoom/enquadramento)~~, ~~Painel~~, ~~Ajustes~~, ~~Aquecimento~~ e ~~Moldura~~ feitos.
 6. ~~Legenda queimada estilo TikTok~~ feita.
 7. ~~Escolha melhor dos momentos: "mais repetidos" + capítulos, início/fim nas quebras da fala, motivos de recusa e exemplos do editor no prompt~~ feita.
+8. ~~Radar escolhe melhor os vídeos: velocidade (views/h para o tamanho do canal) e histórico de aprovação do canal na fila e na triagem~~ feito.
 
 Próximos candidatos: ver `docs/BACKLOG.md` (detecção de bordas desfocadas).

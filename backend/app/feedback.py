@@ -1,12 +1,14 @@
 """What the editor taught us: rejection reasons and real approved/rejected clips, turned into
-examples for the clip-picking prompt (pipeline/score.py)."""
+examples for the clip-picking prompt (pipeline/score.py), and each channel's approval record
+for the Radar (pipeline/ranking.py, pipeline/triage.py)."""
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Literal
 
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, col, func, or_, select
 
 from app.models import Clip, ClipStatus, SourceVideo
+from app.pipeline.ranking import ChannelHistory, ChannelRecord, channel_key
 
 RejectReason = Literal["cut_mid", "no_context", "weak", "repeated", "off_topic", "bad_image"]
 
@@ -19,6 +21,9 @@ REJECT_REASONS: dict[str, tuple[str, str]] = {
     "off_topic": ("Não é GTA 6", "não é sobre GTA 6"),
     "bad_image": ("Imagem ruim", "o problema é a imagem do vídeo, não a escolha do trecho"),
 }
+
+# rejections that say nothing about the source channel: the cut was wrong, not the video
+NOT_THE_CHANNEL = ("cut_mid",)
 
 EXAMPLES_PER_SIDE = 4
 EXCERPT_HEAD = 220
@@ -93,3 +98,26 @@ def editor_examples(
         common = ", ".join(f"{REJECT_REASONS[k][0].lower()} ({n})" for k, n in counts.most_common())
         lines.append(f"Motivos de recusa mais comuns até agora: {common}.")
     return "\n".join(lines)
+
+
+def channel_history(session: Session) -> ChannelHistory:
+    """Approved (incl. posted) vs rejected clips per source channel, for the Radar."""
+    rows = session.exec(
+        select(SourceVideo.channel, Clip.status, func.count())
+        .join(SourceVideo, col(Clip.source_video_id) == col(SourceVideo.id))
+        .where(
+            col(Clip.status).in_([ClipStatus.APPROVED, ClipStatus.POSTED, ClipStatus.REJECTED]),
+            or_(
+                col(Clip.reject_reason).is_(None),
+                col(Clip.reject_reason).not_in(NOT_THE_CHANNEL),
+            ),
+        )
+        .group_by(col(SourceVideo.channel), col(Clip.status))
+    ).all()
+    counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for channel, status, n in rows:
+        counts[channel_key(channel)][status == ClipStatus.REJECTED] += n
+    records = {k: ChannelRecord(approved=a, rejected=r) for k, (a, r) in counts.items() if k}
+    approved = sum(r.approved for r in records.values())
+    decided = sum(r.decided for r in records.values())
+    return ChannelHistory(records, approved / decided if decided else None)

@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from sqlmodel import Session, col, func, or_, select
 
+from app import feedback
 from app.jobs import queue
 from app.jobs.handlers import PROCESS_VIDEO
 from app.jobs.worker import handler
@@ -15,12 +16,14 @@ from app.models import (
     Job,
     JobStatus,
     RadarCandidate,
+    RadarChannel,
     RadarQuery,
     SourceVideo,
     utcnow,
 )
-from app.pipeline import download, radar, triage
+from app.pipeline import download, radar, ranking, triage
 from app.pipeline.radar import Found
+from app.pipeline.ranking import ChannelHistory
 from app.store import get_app_config, get_radar_config, set_time
 
 log = logging.getLogger(__name__)
@@ -31,6 +34,7 @@ VIEWS_MAX_AGE = timedelta(hours=6)
 VIEWS_WINDOW = timedelta(days=30)
 VIEWS_PER_RUN = 20
 WAITING_MAX_AGE = timedelta(days=3)
+CHANNEL_MAX_AGE = timedelta(days=7)  # subscriber counts are refreshed weekly
 
 
 def sent_last_24h(session: Session) -> int:
@@ -90,55 +94,109 @@ def _collect(session: Session, job: Job) -> tuple[list[tuple[Found, int]], list[
     return fresh, errors
 
 
+def _remember_channel(
+    session: Session, channel_id: str, name: str, subscribers: int | None
+) -> None:
+    row = session.exec(select(RadarChannel).where(RadarChannel.channel_id == channel_id)).first()
+    row = row or RadarChannel(channel_id=channel_id)
+    row.name, row.subscribers, row.checked_at = name, subscribers, utcnow()
+    session.add(row)
+
+
+def _fill_subscribers(session: Session, job: Job, videos: list[Found]) -> None:
+    """Subscriber counts of the videos' channels: from the listing itself (channel queries), the
+    weekly cache, or one quick request per channel. A failure leaves None (ranked as a
+    mid-size channel) and is retried on the next scan."""
+    known: dict[str, int | None] = {}
+    for v in videos:
+        if v.channel_id and v.subscribers is not None:
+            known[v.channel_id] = v.subscribers
+            _remember_channel(session, v.channel_id, v.channel, v.subscribers)
+    wanted = {v.channel_id for v in videos if v.channel_id} - known.keys()
+    cached = session.exec(
+        select(RadarChannel).where(
+            col(RadarChannel.channel_id).in_(wanted),
+            col(RadarChannel.checked_at) >= utcnow() - CHANNEL_MAX_AGE,
+        )
+    ).all()
+    known.update({row.channel_id: row.subscribers for row in cached})
+    names = {v.channel_id: v.channel for v in videos if v.channel_id}
+    missing = sorted(wanted - known.keys())
+    for i, channel_id in enumerate(missing):
+        progress = 0.55 + 0.05 * i / len(missing)
+        queue.update(session, job, progress=progress, message=f"Inscritos: {names[channel_id]}")
+        try:
+            subs = radar.channel_subscribers(channel_id)
+        except Exception as exc:  # noqa: BLE001 - one channel page must not stop the scan
+            log.warning("subscribers of %s failed: %s", channel_id, exc)
+            continue
+        known[channel_id] = subs
+        _remember_channel(session, channel_id, names[channel_id], subs)
+    session.commit()
+    for v in videos:
+        if v.subscribers is None and v.channel_id:
+            v.subscribers = known.get(v.channel_id)
+
+
+def _candidate(video: Found, query_id: int, reason: str | None) -> RadarCandidate:
+    speed = None
+    if video.published_at is not None:
+        speed = round(ranking.views_per_hour(video.views, video.published_at, utcnow()), 1)
+    return RadarCandidate(
+        youtube_id=video.youtube_id,
+        url=video.url,
+        title=video.title,
+        channel=video.channel,
+        duration_s=video.duration_s,
+        views=video.views,
+        channel_id=video.channel_id,
+        published_at=video.published_at,
+        subscribers=video.subscribers,
+        views_per_hour=speed,
+        query_id=query_id,
+        status=CandidateStatus.REJECTED if reason else CandidateStatus.WAITING,
+        reason=reason or "Aguardando triagem",
+    )
+
+
+def _triage(session: Session, job: Job, videos: list[Found]) -> None:
+    queue.update(session, job, progress=0.6, message=f"Triagem de {len(videos)} vídeo(s)")
+    recent = session.exec(
+        select(RadarCandidate.title)
+        .where(RadarCandidate.status == CandidateStatus.SENT)
+        .order_by(col(RadarCandidate.sent_at).desc())
+        .limit(30)
+    ).all()
+    model = get_app_config(session).model_triage
+    decisions = triage.triage(videos, list(recent), model, feedback.channel_history(session))
+    for video in videos:
+        cand = session.exec(
+            select(RadarCandidate).where(RadarCandidate.youtube_id == video.youtube_id)
+        ).one()
+        decision = decisions.get(video.youtube_id)
+        if decision is None:
+            cand.status, cand.reason = CandidateStatus.REJECTED, "A triagem não avaliou"
+        else:
+            cand.status = CandidateStatus.WAITING if decision.keep else CandidateStatus.REJECTED
+            cand.reason = decision.reason
+        session.add(cand)
+    session.commit()
+
+
 @handler(RADAR_SCAN)
 def radar_scan(session: Session, job: Job) -> None:
     queue.update(session, job, payload={**job.payload, "title": "Radar: buscando vídeos novos"})
     set_time(session, "radar_last_scan_at", utcnow())
     fresh, errors = _collect(session, job)
 
-    to_triage: list[Found] = []
+    reasons = {video.youtube_id: radar.prefilter(video) for video, _ in fresh}
+    to_triage = [video for video, _ in fresh if reasons[video.youtube_id] is None]
+    _fill_subscribers(session, job, to_triage)
     for video, query_id in fresh:
-        cand = RadarCandidate(
-            youtube_id=video.youtube_id,
-            url=video.url,
-            title=video.title,
-            channel=video.channel,
-            duration_s=video.duration_s,
-            views=video.views,
-            query_id=query_id,
-        )
-        reason = radar.prefilter(video)
-        if reason:
-            cand.reason = reason
-        else:
-            cand.status = CandidateStatus.WAITING
-            cand.reason = "Aguardando triagem"
-            to_triage.append(video)
-        session.add(cand)
+        session.add(_candidate(video, query_id, reasons[video.youtube_id]))
     session.commit()
-
     if to_triage:
-        queue.update(session, job, progress=0.6, message=f"Triagem de {len(to_triage)} vídeo(s)")
-        recent = session.exec(
-            select(RadarCandidate.title)
-            .where(RadarCandidate.status == CandidateStatus.SENT)
-            .order_by(col(RadarCandidate.sent_at).desc())
-            .limit(30)
-        ).all()
-        model = get_app_config(session).model_triage
-        decisions = triage.triage(to_triage, list(recent), model)
-        for video in to_triage:
-            cand = session.exec(
-                select(RadarCandidate).where(RadarCandidate.youtube_id == video.youtube_id)
-            ).one()
-            decision = decisions.get(video.youtube_id)
-            if decision is None:
-                cand.status, cand.reason = CandidateStatus.REJECTED, "A triagem não avaliou"
-            else:
-                cand.status = CandidateStatus.WAITING if decision.keep else CandidateStatus.REJECTED
-                cand.reason = decision.reason
-            session.add(cand)
-        session.commit()
+        _triage(session, job, to_triage)
 
     sent = dispatch(session)
     summary = f"{len(fresh)} novo(s), {len(to_triage)} na triagem, {sent} enviado(s) para corte"
@@ -162,21 +220,33 @@ def expire_waiting(session: Session) -> None:
     session.commit()
 
 
+def candidate_score(cand: RadarCandidate, history: ChannelHistory) -> float:
+    speed = cand.views_per_hour
+    if speed is None:  # found before publish times were stored: assume two days old
+        speed = ranking.views_per_hour(cand.views, None, utcnow())
+    return ranking.score(speed, cand.subscribers, cand.channel, history)
+
+
+def waiting_queue(session: Session, history: ChannelHistory | None = None) -> list[RadarCandidate]:
+    """Waiting candidates in the order they get sent: fastest views for the channel's size
+    first, weighted by how the editor has judged that channel's clips."""
+    history = history or feedback.channel_history(session)
+    waiting = session.exec(
+        select(RadarCandidate).where(RadarCandidate.status == CandidateStatus.WAITING)
+    ).all()
+    return sorted(waiting, key=lambda c: (-candidate_score(c, history), -(c.id or 0)))
+
+
 def dispatch(session: Session) -> int:
-    """Send waiting candidates to processing, most viewed first, within the daily quota."""
+    """Send the best ranked waiting candidates to processing, within the daily quota."""
     expire_waiting(session)
     quota = get_radar_config(session).daily_limit - sent_last_24h(session)
     if quota <= 0:
         return 0
-    waiting = session.exec(
-        select(RadarCandidate)
-        .where(RadarCandidate.status == CandidateStatus.WAITING)
-        .order_by(col(RadarCandidate.views).desc(), col(RadarCandidate.id).desc())
-        .limit(quota)
-    ).all()
-    for cand in waiting:
+    chosen = waiting_queue(session)[:quota]
+    for cand in chosen:
         send_candidate(session, cand)
-    return len(waiting)
+    return len(chosen)
 
 
 @handler(REFRESH_VIEWS)

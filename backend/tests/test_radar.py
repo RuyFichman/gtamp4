@@ -77,7 +77,7 @@ def test_scan_dedupes_filters_and_respects_quota(
         found("v3", views=200),
     ]
     monkeypatch.setattr(radar, "list_videos", lambda kind, q: videos)
-    monkeypatch.setattr(triage, "triage", lambda vs, recent, model: triage.triage_heuristic(vs))
+    monkeypatch.setattr(triage, "triage", lambda vs, *_: triage.triage_heuristic(vs))
 
     job = queue.enqueue(session, radar_jobs.RADAR_SCAN)
     radar_jobs.radar_scan(session, job)
@@ -86,7 +86,7 @@ def test_scan_dedupes_filters_and_respects_quota(
     assert "old" not in by_id
     assert by_id["short"].status == CandidateStatus.REJECTED
     assert by_id["off"].status == CandidateStatus.REJECTED
-    # quota 2: the two most viewed are sent, the other waits
+    # quota 2: the two fastest (same age and channel size: most viewed) go, the other waits
     assert by_id["v2"].status == CandidateStatus.SENT
     assert by_id["v3"].status == CandidateStatus.SENT
     assert by_id["v1"].status == CandidateStatus.WAITING

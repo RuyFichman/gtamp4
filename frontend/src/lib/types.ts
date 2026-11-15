@@ -150,10 +150,18 @@ export type RadarCandidate = {
   channel: string
   duration_s: number | null
   views: number | null
+  published_at: string | null
+  subscribers: number | null
+  /** views per hour since publication, measured when the Radar found it */
+  views_per_hour: number | null
   status: CandidateStatus
   reason: string
   found_at: string
   sent_at: string | null
+  /** 1 = next to be sent (waiting only) */
+  queue_position: number | null
+  /** the editor's decisions on clips from this channel */
+  channel_record: { approved: number; decided: number } | null
 }
 
 export type DayStat = { date: string; generated: number; posted: number }

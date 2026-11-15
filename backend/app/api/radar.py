@@ -5,11 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, col, select
 
+from app import feedback
 from app.api.schemas import JobOut, _UtcModel
 from app.db import get_session
 from app.jobs import queue
-from app.jobs.radar_jobs import RADAR_SCAN, send_candidate, sent_last_24h
+from app.jobs.radar_jobs import RADAR_SCAN, send_candidate, sent_last_24h, waiting_queue
 from app.models import CandidateStatus, RadarCandidate, RadarQuery
+from app.pipeline.ranking import ChannelHistory
 from app.store import RadarConfig, get_radar_config, get_time, set_radar_config
 
 router = APIRouter(prefix="/api/radar", tags=["radar"])
@@ -42,6 +44,11 @@ class QueryOut(_UtcModel):
     last_error: str | None
 
 
+class ChannelRecordOut(BaseModel):
+    approved: int
+    decided: int
+
+
 class CandidateOut(_UtcModel):
     id: int
     youtube_id: str
@@ -50,10 +57,26 @@ class CandidateOut(_UtcModel):
     channel: str
     duration_s: float | None
     views: int | None
+    published_at: datetime | None
+    subscribers: int | None
+    views_per_hour: float | None
     status: CandidateStatus
     reason: str
     found_at: datetime
     sent_at: datetime | None
+    queue_position: int | None = None  # 1 = next to be sent (waiting only)
+    channel_record: ChannelRecordOut | None = None  # editor's decisions on this channel
+
+    @classmethod
+    def of(
+        cls, c: RadarCandidate, history: ChannelHistory, position: int | None = None
+    ) -> "CandidateOut":
+        out = cls.model_validate(c, from_attributes=True)
+        out.queue_position = position
+        record = history.of(c.channel)
+        if record and record.decided:
+            out.channel_record = ChannelRecordOut(approved=record.approved, decided=record.decided)
+        return out
 
 
 def _status(session: Session) -> RadarStatusOut:
@@ -144,7 +167,9 @@ def list_candidates(session: SessionDep, limit: int = 80) -> list[CandidateOut]:
     rows = session.exec(
         select(RadarCandidate).order_by(col(RadarCandidate.id).desc()).limit(min(limit, 300))
     ).all()
-    return [CandidateOut.model_validate(c, from_attributes=True) for c in rows]
+    history = feedback.channel_history(session)
+    positions = {c.id: i for i, c in enumerate(waiting_queue(session, history), start=1)}
+    return [CandidateOut.of(c, history, positions.get(c.id)) for c in rows]
 
 
 @router.post("/candidates/{cand_id}/send")
@@ -157,4 +182,4 @@ def send_now(cand_id: int, session: SessionDep) -> CandidateOut:
         raise HTTPException(409, "Esse vídeo já foi enviado para corte.")
     send_candidate(session, cand)
     session.refresh(cand)
-    return CandidateOut.model_validate(cand, from_attributes=True)
+    return CandidateOut.of(cand, feedback.channel_history(session))

@@ -140,12 +140,26 @@ class RadarCandidate(SQLModel, table=True):
     channel: str = ""
     duration_s: float | None = None
     views: int | None = None
+    channel_id: str | None = None
+    published_at: datetime | None = None  # approximate ("há 9 horas")
+    subscribers: int | None = None
+    views_per_hour: float | None = None  # views / hours since publication, when found
     query_id: int | None = None
     status: CandidateStatus = Field(default=CandidateStatus.REJECTED, index=True)
     reason: str = ""
     job_id: int | None = None
     found_at: datetime = Field(default_factory=utcnow)
     sent_at: datetime | None = None
+
+
+class RadarChannel(SQLModel, table=True):
+    """Subscriber counts of channels the Radar has seen, so each is fetched once a week."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    channel_id: str = Field(index=True, unique=True)
+    name: str = ""
+    subscribers: int | None = None  # None = hidden by the channel
+    checked_at: datetime = Field(default_factory=utcnow)
 
 
 class Setting(SQLModel, table=True):

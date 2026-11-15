@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.pipeline.radar import Found
+from app.pipeline.ranking import ChannelHistory, is_bad_channel
 
 GTA6 = re.compile(r"gta\s*(6|vi)\b|grand\s+theft\s+auto\s*(6|vi)\b", re.IGNORECASE)
 
@@ -33,23 +34,32 @@ keep=false para:
 - notícia repetida: mesmo assunto de um título em "Já enviados recentemente";
 - golpe, download pirata, "GTA 6 mobile/APK", mod falso.
 
+"editor: X de Y cortes aprovados" é o histórico do canal: dos cortes que o editor já avaliou
+de vídeos desse canal, quantos ele aprovou. Canal com quase tudo recusado (ex.: 1 de 8) é
+keep=false, a não ser que o título seja claramente forte; histórico bom reforça keep=true.
+Sem histórico é neutro.
+
 reason: uma frase curta em português do Brasil.
 Devolva exatamente uma decisão por vídeo recebido, com o mesmo youtube_id."""
 
 
-def _describe(v: Found) -> str:
+def _describe(v: Found, history: ChannelHistory) -> str:
     minutes = f"{v.duration_s / 60:.0f} min" if v.duration_s else "?"
-    return f"- {v.youtube_id} | {v.title} | canal: {v.channel} | {minutes} | views: {v.views}"
+    channel = v.channel
+    record = history.of(v.channel)
+    if record and record.decided:
+        channel += f" (editor: {record.approved} de {record.decided} cortes aprovados)"
+    return f"- {v.youtube_id} | {v.title} | canal: {channel} | {minutes} | views: {v.views}"
 
 
 def triage_with_claude(
-    videos: list[Found], recent_titles: list[str], model: str
+    videos: list[Found], recent_titles: list[str], model: str, history: ChannelHistory
 ) -> dict[str, Decision]:
     settings = get_settings()
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     recent = "\n".join(f"- {t}" for t in recent_titles) or "(nenhum)"
     user = f"Já enviados recentemente:\n{recent}\n\nVídeos para avaliar:\n" + "\n".join(
-        _describe(v) for v in videos
+        _describe(v, history) for v in videos
     )
     response = client.beta.messages.parse(
         model=model,
@@ -66,23 +76,38 @@ def triage_with_claude(
     return {d.youtube_id: d for d in response.parsed_output.decisions if d.youtube_id in wanted}
 
 
-def triage_heuristic(videos: list[Found]) -> dict[str, Decision]:
-    """No API key: keep anything whose title mentions GTA 6 / GTA VI."""
-    return {
-        v.youtube_id: Decision(
-            youtube_id=v.youtube_id,
-            keep=bool(GTA6.search(v.title)),
-            reason="Título fala de GTA 6 (sem IA)"
-            if GTA6.search(v.title)
-            else "Título não fala de GTA 6 (sem IA)",
+def _heuristic_one(v: Found, history: ChannelHistory) -> Decision:
+    record = history.of(v.channel)
+    if not GTA6.search(v.title):
+        keep, reason = False, "Título não fala de GTA 6 (sem IA)"
+    elif record is not None and is_bad_channel(record):
+        keep = False
+        reason = (
+            f"Canal com poucos cortes aprovados: {record.approved} de {record.decided} (sem IA)"
         )
-        for v in videos
-    }
+    else:
+        keep, reason = True, "Título fala de GTA 6 (sem IA)"
+    return Decision(youtube_id=v.youtube_id, keep=keep, reason=reason)
 
 
-def triage(videos: list[Found], recent_titles: list[str], model: str) -> dict[str, Decision]:
+def triage_heuristic(
+    videos: list[Found], history: ChannelHistory | None = None
+) -> dict[str, Decision]:
+    """No API key: keep anything whose title mentions GTA 6 / GTA VI, unless the editor keeps
+    rejecting that channel's clips."""
+    history = history or ChannelHistory()
+    return {v.youtube_id: _heuristic_one(v, history) for v in videos}
+
+
+def triage(
+    videos: list[Found],
+    recent_titles: list[str],
+    model: str,
+    history: ChannelHistory | None = None,
+) -> dict[str, Decision]:
     if not videos:
         return {}
+    history = history or ChannelHistory()
     if get_settings().anthropic_api_key:
-        return triage_with_claude(videos, recent_titles, model)
-    return triage_heuristic(videos)
+        return triage_with_claude(videos, recent_titles, model, history)
+    return triage_heuristic(videos, history)
