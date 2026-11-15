@@ -206,6 +206,7 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 - faster-whisper 1.2 abre arquivos com PyAV usando `metadata_errors`, que o `av` 19 não aceita: nunca passe caminho ao Whisper, passe o array de `transcribe.decode_audio`.
 - O filtro `ass` do ffmpeg não lida bem com `C:\` no caminho: `cut.render_clip` escreve `captions.ass` numa pasta temporária e roda o ffmpeg com `cwd` nela (por isso os outros caminhos viram absolutos).
 - As fontes da legenda precisam existir no Windows (lista fixa em `captions.FONTS`); o libass troca por outra se não achar.
+- **Só um backend por vez.** O `queue.claim_next` não é atômico: dois servidores no mesmo `data/app.db` (ex.: um uvicorn órfão que sobrou depois de fechar o terminal) pegam o mesmo job e o rodam duas vezes. O órfão sem stdout ainda quebra yt-dlp/ffmpeg (`[Errno 22] Invalid argument`, ffmpeg código 3221225794). Antes de subir o dev server, confira se a porta 8000 está livre (`netstat -ano | findstr :8000`) e mate a árvore do processo antigo (`taskkill /T /F /PID ...`).
 - `api.ts` só põe `Content-Type: application/json` quando o corpo é string; upload com `FormData` define o próprio boundary.
 - Re-render com o mesmo início/fim gera nome com `_v{job_id}` para não sobrescrever o arquivo que pode estar tocando no navegador.
 
