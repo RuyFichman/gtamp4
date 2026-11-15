@@ -59,14 +59,14 @@ export function TranscriptPicker({ segments, start, end, onSeek, onStart, onEnd 
               <button
                 type="button"
                 onClick={() => onStart(seg.start)}
-                className="rounded border border-white/20 px-1.5 text-xs hover:bg-white/10"
+                className="rounded border border-white/15 bg-white/5 px-1.5 text-xs hover:border-white/25 hover:bg-white/10"
               >
                 início
               </button>
               <button
                 type="button"
                 onClick={() => onEnd(seg.end)}
-                className="rounded border border-white/20 px-1.5 text-xs hover:bg-white/10"
+                className="rounded border border-white/15 bg-white/5 px-1.5 text-xs hover:border-white/25 hover:bg-white/10"
               >
                 fim
               </button>

@@ -24,7 +24,7 @@ export function JobList({ jobs, onChange }: { jobs: Job[]; onChange: () => void 
                 {job.message && job.message !== LABEL[job.status] && `: ${job.message}`}
               </p>
               {job.error && (
-                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap text-xs text-orange-300/80">
+                <pre className="mt-1.5 max-h-32 overflow-auto whitespace-pre-wrap rounded-md bg-black/25 px-2.5 py-2 text-xs text-orange-300/80">
                   {job.error}
                 </pre>
               )}
@@ -33,13 +33,13 @@ export function JobList({ jobs, onChange }: { jobs: Job[]; onChange: () => void 
               <div className="flex shrink-0 gap-2 text-xs">
                 <button
                   onClick={() => api.retryJob(job.id).then(onChange)}
-                  className="rounded border border-white/20 px-2 py-1 hover:bg-white/10"
+                  className="rounded border border-white/15 bg-white/5 px-2 py-1 hover:border-white/25 hover:bg-white/10"
                 >
                   Tentar de novo
                 </button>
                 <button
                   onClick={() => api.dismissJob(job.id).then(onChange)}
-                  className="rounded border border-white/20 px-2 py-1 hover:bg-white/10"
+                  className="rounded border border-white/15 bg-white/5 px-2 py-1 hover:border-white/25 hover:bg-white/10"
                 >
                   Remover
                 </button>

@@ -75,7 +75,7 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio }: Pr
           <button
             type="button"
             onClick={() => onStudio(clip.id)}
-            className="rounded border border-white/20 px-2 py-1 hover:bg-white/10"
+            className="rounded border border-white/15 bg-white/5 px-2 py-1 hover:border-white/25 hover:bg-white/10"
           >
             Estúdio
           </button>
@@ -91,7 +91,7 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio }: Pr
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value === '' ? '' : Number(e.target.value))}
-            className="rounded border border-white/15 bg-indigo-950 px-2 py-1.5 text-zinc-100"
+            className="rounded border border-white/15 bg-black/30 px-2 py-1.5 text-zinc-100"
           >
             <option value="">
               {accounts.length ? 'Conta onde postou…' : 'Sem contas (cadastre em Contas)'}
@@ -121,7 +121,7 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio }: Pr
           <button
             onClick={() => onUnapprove(clip.id)}
             title="Volta para a aba Aprovar"
-            className="rounded border border-white/20 px-3 py-1.5 hover:bg-white/10"
+            className="rounded border border-white/15 bg-white/5 px-3 py-1.5 hover:border-white/25 hover:bg-white/10"
           >
             Devolver
           </button>

@@ -73,7 +73,7 @@ export function ApprovePage({ active, onCountChange }: Props) {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as ClipSort)}
-              className="rounded border border-white/15 bg-indigo-950 px-2 py-1 text-zinc-100"
+              className="rounded border border-white/15 bg-black/30 px-2 py-1 text-zinc-100"
             >
               <option value="potential">Maior potencial</option>
               <option value="recent">Mais recentes</option>

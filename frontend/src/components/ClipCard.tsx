@@ -71,15 +71,18 @@ export function ClipCard({ clip, rejectReasons, onStatus, onSource, onStudio }: 
           <button
             onClick={refresh}
             disabled={refreshing}
-            className="mt-1 rounded border border-white/20 px-2 py-0.5 text-zinc-200 hover:bg-white/10 disabled:opacity-50"
+            className="mt-1 rounded border border-white/15 bg-white/5 px-2 py-0.5 text-zinc-200 hover:border-white/25 hover:bg-white/10 disabled:opacity-50"
           >
             {refreshing ? 'Atualizando…' : 'Atualizar views'}
           </button>
           {error && <p className="text-orange-400">{error}</p>}
         </div>
 
-        <p className="font-semibold text-orange-400">
-          Potencial {clip.potential}/100 · {clip.potential_reason}
+        <p className="text-zinc-300">
+          <span className="mr-1.5 inline-block rounded-md bg-orange-500/15 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-orange-300 ring-1 ring-orange-400/25">
+            Potencial {clip.potential}/100
+          </span>
+          {clip.potential_reason}
         </p>
 
         <p className="whitespace-pre-line text-zinc-300">
@@ -99,7 +102,7 @@ export function ClipCard({ clip, rejectReasons, onStatus, onSource, onStudio }: 
                 <button
                   key={r.key}
                   onClick={() => onStatus(clip.id, 'rejected', r.key)}
-                  className="rounded border border-white/20 px-1 py-1.5 hover:bg-white/10"
+                  className="rounded border border-white/15 bg-white/5 px-1 py-1.5 hover:border-white/25 hover:bg-white/10"
                 >
                   {r.label}
                 </button>
@@ -130,20 +133,20 @@ export function ClipCard({ clip, rejectReasons, onStatus, onSource, onStudio }: 
             </button>
             <button
               onClick={() => setRejecting(true)}
-              className="rounded border border-white/20 py-1.5 hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 py-1.5 hover:border-white/25 hover:bg-white/10"
             >
               Recusar
             </button>
             <button
               onClick={() => onStudio(clip.id)}
               title="Ajustar início/fim e texto"
-              className="rounded border border-white/20 py-1.5 hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 py-1.5 hover:border-white/25 hover:bg-white/10"
             >
               Estúdio
             </button>
             <a
               href={api.clipDownloadUrl(clip.id)}
-              className="col-span-3 rounded border border-white/20 py-1.5 text-center hover:bg-white/10"
+              className="col-span-3 rounded border border-white/15 bg-white/5 py-1.5 text-center hover:border-white/25 hover:bg-white/10"
             >
               Baixar
             </a>

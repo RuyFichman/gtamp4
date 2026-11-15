@@ -4,7 +4,7 @@ import { formatDateTime } from '../lib/format'
 import type { RadarQuery, RadarQueryKind } from '../lib/types'
 
 const SUGGESTIONS = ['GTA 6', 'GTA VI', 'GTA 6 trailer', 'GTA 6 leak']
-const SMALL_BTN = 'rounded border border-white/20 px-2 py-0.5 text-xs hover:bg-white/10'
+const SMALL_BTN = 'rounded border border-white/15 bg-white/5 px-2 py-0.5 text-xs hover:border-white/25 hover:bg-white/10'
 
 type Props = { queries: RadarQuery[]; onChange: () => void }
 
@@ -41,7 +41,7 @@ export function RadarQueries({ queries, onChange }: Props) {
         <select
           value={kind}
           onChange={(e) => setKind(e.target.value as RadarQueryKind)}
-          className="rounded border border-white/15 bg-indigo-950 px-2 py-1.5"
+          className="rounded border border-white/15 bg-black/30 px-2 py-1.5"
         >
           <option value="search">Termo de busca</option>
           <option value="channel">Canal</option>

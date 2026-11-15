@@ -60,7 +60,7 @@ export function DailyChart({ days }: { days: DayStat[] }) {
           <button
             type="button"
             onClick={() => setAsTable(!asTable)}
-            className="rounded border border-white/20 px-2 py-0.5 hover:bg-white/10"
+            className="rounded border border-white/15 bg-white/5 px-2 py-0.5 hover:border-white/25 hover:bg-white/10"
           >
             {asTable ? 'Ver gráfico' : 'Ver tabela'}
           </button>

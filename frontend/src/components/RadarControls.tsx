@@ -35,7 +35,7 @@ export function RadarControls({ status, onChange, onScan }: Props) {
           className={`rounded px-4 py-1.5 font-semibold ${
             config.enabled
               ? 'bg-emerald-500 text-white hover:bg-emerald-400'
-              : 'border border-white/20 hover:bg-white/10'
+              : 'border border-white/15 bg-white/5 hover:border-white/25 hover:bg-white/10'
           }`}
         >
           {config.enabled ? 'Radar ligado' : 'Radar desligado'}
@@ -46,7 +46,7 @@ export function RadarControls({ status, onChange, onScan }: Props) {
           <select
             value={config.interval_minutes}
             onChange={(e) => save({ interval_minutes: Number(e.target.value) })}
-            className="rounded border border-white/15 bg-indigo-950 px-2 py-1 text-zinc-100"
+            className="rounded border border-white/15 bg-black/30 px-2 py-1 text-zinc-100"
           >
             {INTERVALS.map((m) => (
               <option key={m} value={m}>

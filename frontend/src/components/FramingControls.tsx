@@ -62,7 +62,7 @@ export function FramingControls({ value, onChange, onAuto, autoBusy, autoMessage
         <button
           type="button"
           onClick={() => onChange({ zoom: 1, pan_x: 0, pan_y: 0 })}
-          className="rounded border border-white/20 px-3 py-1 hover:bg-white/10"
+          className="rounded border border-white/15 bg-white/5 px-3 py-1 hover:border-white/25 hover:bg-white/10"
         >
           Sem zoom
         </button>

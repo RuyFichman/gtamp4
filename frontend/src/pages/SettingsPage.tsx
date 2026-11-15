@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import type { AppConfig, AppSettings } from '../lib/types'
 
 const INPUT = 'rounded border border-white/15 bg-black/30 px-2 py-1.5 text-zinc-100'
-const SELECT = 'rounded border border-white/15 bg-indigo-950 px-2 py-1.5 text-zinc-100'
+const SELECT = 'rounded border border-white/15 bg-black/30 px-2 py-1.5 text-zinc-100'
 const MODELS = ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-2']
 
 export function SettingsPage({ onOpenRadar }: { onOpenRadar: () => void }) {
@@ -181,7 +181,7 @@ export function SettingsPage({ onOpenRadar }: { onOpenRadar: () => void }) {
           <button
             type="button"
             onClick={() => set(data.defaults)}
-            className="rounded border border-white/20 px-4 py-2 text-sm hover:bg-white/10"
+            className="rounded border border-white/15 bg-white/5 px-4 py-2 text-sm hover:border-white/25 hover:bg-white/10"
           >
             Voltar ao padrão
           </button>

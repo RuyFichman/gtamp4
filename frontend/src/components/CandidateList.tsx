@@ -56,7 +56,7 @@ export function CandidateList({ candidates, onChange }: Props) {
               key={f.value}
               onClick={() => setFilter(f.value)}
               className={`rounded px-2 py-1 ${
-                filter === f.value ? 'bg-pink-500 text-white' : 'border border-white/20 hover:bg-white/10'
+                filter === f.value ? 'bg-pink-500 text-white' : 'border border-white/15 bg-white/5 hover:border-white/25 hover:bg-white/10'
               }`}
             >
               {f.label}
@@ -115,7 +115,7 @@ export function CandidateList({ candidates, onChange }: Props) {
                 <button
                   onClick={() => send(c.id)}
                   title="Ignora a triagem e o limite diário"
-                  className="rounded border border-white/20 px-2 py-0.5 text-xs hover:bg-white/10"
+                  className="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-xs hover:border-white/25 hover:bg-white/10"
                 >
                   Cortar mesmo assim
                 </button>

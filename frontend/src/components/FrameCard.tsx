@@ -36,7 +36,7 @@ export function FrameCard(p: Props) {
           <button
             type="button"
             onClick={p.onMakeDefault}
-            className="rounded border border-white/20 px-2 py-1 hover:bg-white/10"
+            className="rounded border border-white/15 bg-white/5 px-2 py-1 hover:border-white/25 hover:bg-white/10"
           >
             Usar esta
           </button>
@@ -54,7 +54,7 @@ export function FrameCard(p: Props) {
               <button
                 type="button"
                 onClick={() => setConfirm(false)}
-                className="rounded border border-white/20 px-2 py-1 hover:bg-white/10"
+                className="rounded border border-white/15 bg-white/5 px-2 py-1 hover:border-white/25 hover:bg-white/10"
               >
                 Não
               </button>
@@ -63,7 +63,7 @@ export function FrameCard(p: Props) {
             <button
               type="button"
               onClick={() => setConfirm(true)}
-              className="rounded border border-white/20 px-2 py-1 text-zinc-400 hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 px-2 py-1 text-zinc-400 hover:border-white/25 hover:bg-white/10"
             >
               Apagar
             </button>

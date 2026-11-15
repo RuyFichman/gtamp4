@@ -243,7 +243,7 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
               <button
                 type="button"
                 onClick={() => seek(Math.max(form.start, form.end - 3), form.end)}
-                className="rounded border border-white/20 px-3 py-1 hover:bg-white/10"
+                className="rounded border border-white/15 bg-white/5 px-3 py-1 hover:border-white/25 hover:bg-white/10"
               >
                 Ouvir o final
               </button>

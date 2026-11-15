@@ -136,7 +136,7 @@ export function WarmupCard({ warmup: w, onChange }: Props) {
             <button
               type="button"
               onClick={() => setConfirmReset(false)}
-              className="rounded border border-white/20 px-2 py-0.5 hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 px-2 py-0.5 hover:border-white/25 hover:bg-white/10"
             >
               Cancelar
             </button>
@@ -145,7 +145,7 @@ export function WarmupCard({ warmup: w, onChange }: Props) {
           <button
             type="button"
             onClick={() => setConfirmReset(true)}
-            className="rounded border border-white/20 px-2 py-0.5 text-zinc-400 hover:bg-white/10"
+            className="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-zinc-400 hover:border-white/25 hover:bg-white/10"
           >
             Parar / recomeçar
           </button>

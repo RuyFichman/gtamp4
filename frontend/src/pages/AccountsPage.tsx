@@ -6,7 +6,7 @@ import type { Account, AccountInput, Platform } from '../lib/types'
 const EMPTY: AccountInput = { platform: 'tiktok', handle: '', name: '', notes: '' }
 const INPUT =
   'rounded border border-white/15 bg-black/30 px-2 py-1.5 text-zinc-100 placeholder:text-zinc-500'
-const SMALL_BTN = 'rounded border border-white/20 px-2 py-0.5 text-xs hover:bg-white/10'
+const SMALL_BTN = 'rounded border border-white/15 bg-white/5 px-2 py-0.5 text-xs hover:border-white/25 hover:bg-white/10'
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -71,7 +71,7 @@ export function AccountsPage() {
         <select
           value={form.platform}
           onChange={(e) => setForm({ ...form, platform: e.target.value as Platform })}
-          className="rounded border border-white/15 bg-indigo-950 px-2 py-1.5"
+          className="rounded border border-white/15 bg-black/30 px-2 py-1.5"
         >
           {Object.entries(PLATFORM_LABEL).map(([value, label]) => (
             <option key={value} value={value}>
@@ -106,7 +106,7 @@ export function AccountsPage() {
             <button
               type="button"
               onClick={reset}
-              className="rounded border border-white/20 px-3 py-1.5 hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 px-3 py-1.5 hover:border-white/25 hover:bg-white/10"
             >
               Cancelar
             </button>

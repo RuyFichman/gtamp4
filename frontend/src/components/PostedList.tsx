@@ -33,7 +33,7 @@ export function PostedList({ clips, accounts, onUndo }: Props) {
             <button
               onClick={() => onUndo(clip.id)}
               title="Volta para a fila de postagem"
-              className="rounded border border-white/20 px-2 py-0.5 text-xs hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 px-2 py-0.5 text-xs hover:border-white/25 hover:bg-white/10"
             >
               Desfazer
             </button>

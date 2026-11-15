@@ -116,7 +116,7 @@ export function FramePage() {
             <button
               type="button"
               onClick={() => setConfirmRerender(false)}
-              className="rounded border border-white/20 px-3 py-1 hover:bg-white/10"
+              className="rounded border border-white/15 bg-white/5 px-3 py-1 hover:border-white/25 hover:bg-white/10"
             >
               Cancelar
             </button>
@@ -126,7 +126,7 @@ export function FramePage() {
             type="button"
             disabled={data.live_clips === 0}
             onClick={() => setConfirmRerender(true)}
-            className="rounded border border-white/20 px-3 py-1 hover:bg-white/10 disabled:opacity-40"
+            className="rounded border border-white/15 bg-white/5 px-3 py-1 hover:border-white/25 hover:bg-white/10 disabled:opacity-40"
           >
             Re-renderizar cortes
           </button>

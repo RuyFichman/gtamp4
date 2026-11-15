@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { formatTime, parseTime } from '../lib/format'
 
 const NUDGES = [-1, -0.1, 0.1, 1]
-const BTN = 'rounded border border-white/20 px-1.5 py-1 text-xs hover:bg-white/10'
+const BTN = 'rounded border border-white/15 bg-white/5 px-1.5 py-1 text-xs hover:border-white/25 hover:bg-white/10'
 
 type Props = {
   label: string

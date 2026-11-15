@@ -18,7 +18,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
       type="button"
       onClick={copy}
       disabled={!text}
-      className="rounded border border-white/20 px-2 py-1 hover:bg-white/10 disabled:opacity-40"
+      className="rounded border border-white/15 bg-white/5 px-2 py-1 hover:border-white/25 hover:bg-white/10 disabled:opacity-40"
     >
       {state === 'ok' ? 'Copiado!' : state === 'fail' ? 'Não deu pra copiar' : label}
     </button>
