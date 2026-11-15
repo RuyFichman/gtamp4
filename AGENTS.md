@@ -59,6 +59,7 @@ gtamp4/
 │   │   ├── models.py      # tabelas SQLModel
 │   │   ├── store.py       # config editável na UI (tabela setting): AppConfig, RadarConfig
 │   │   ├── stats.py       # números do Painel
+│   │   ├── feedback.py    # motivos de recusa + exemplos do editor para o prompt da IA
 │   │   ├── warmup.py      # checklist do Aquecimento
 │   │   ├── frames.py      # molduras (validação do PNG, padrão, re-render)
 │   │   ├── maintenance.py # limpeza de vídeos originais
@@ -66,7 +67,8 @@ gtamp4/
 │   │   ├── api/           # um arquivo de rotas por aba + schemas.py (modelos de resposta)
 │   │   ├── jobs/          # queue, worker, handlers (process_video, render_clip), radar_jobs
 │   │   └── pipeline/      # download, transcribe, energy, score, triage, radar,
-│   │                      # captions, cut, framing, encoder, proc, types (não lê o banco)
+│   │                      # boundaries, captions, cut, framing, encoder, proc, types
+│   │                      # (não lê o banco)
 │   └── tests/
 ├── frontend/
 │   ├── package.json
@@ -86,7 +88,7 @@ gtamp4/
 | Aba | Função |
 |---|---|
 | **Painel** | Estatísticas (`GET /api/stats`, `app/stats.py`): fila de aprovação/postagem, taxa de aprovação, cortes por dia (14 dias, fuso da máquina), potencial médio aprovados vs. recusados, postados por conta, Radar, jobs, disco. Gráfico em SVG próprio (sem lib), cores validadas para daltonismo |
-| **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, Estúdio, baixar). Fica montada o tempo todo para o polling e o contador da aba seguirem funcionando |
+| **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, Estúdio, baixar). "Recusar" pede o motivo (botões; "Sem motivo" também vale), que ensina a IA (ver Pipeline). Fica montada o tempo todo para o polling e o contador da aba seguirem funcionando |
 | **Postagem** | Cortes aprovados aguardando postagem manual: baixar vídeo, copiar título/descrição/hashtags, escolher a conta e marcar como "postado" (com link do post, opcional). Lista dos já postados |
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
 | **Aquecimento** | Checklist **manual** de 14 dias por conta (`app/warmup.py`: 3 fases, tarefas diárias e "uma vez", tabela `warmupcheck`, dia local da máquina). Só registra o que o usuário marcou; nunca automatizar (ver Regras) |
@@ -100,8 +102,8 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 
 ## Modelo de dados (resumo)
 
-- `SourceVideo`: youtube_id, url, título, canal, idioma, duração, views, views_checked_at, transcrição, file_path (some quando a limpeza apaga o original).
-- `Clip`: source_video_id, start_s, end_s, título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, zoom/pan_x/pan_y (enquadramento), captions (legenda liga/desliga) + caption_words/caption_range (cache das palavras do Whisper e a janela que cobrem), account_id, post_url, posted_at.
+- `SourceVideo`: youtube_id, url, título, canal, idioma, duração, views, views_checked_at, transcrição, heatmap (gráfico "mais repetidos" do YouTube) e chapters (capítulos), file_path (some quando a limpeza apaga o original).
+- `Clip`: source_video_id, start_s, end_s, título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, reject_reason (chave de `feedback.REJECT_REASONS`, só quando recusado), zoom/pan_x/pan_y (enquadramento), captions (legenda liga/desliga) + caption_words/caption_range (cache das palavras do Whisper e a janela que cobrem), account_id, post_url, posted_at.
 - `Job`: kind, payload (JSON), status, progresso, mensagem, erro, tentativas, timestamps.
 - `Account` (+ `warmup_started_on`), `WarmupCheck`, `FrameTemplate` (name, overlay_path, is_default), `RadarQuery`, `RadarCandidate`, `Setting` (chave/valor JSON).
 
@@ -110,9 +112,10 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 
 ## Pipeline de um vídeo
 
-1. `download`: yt-dlp baixa vídeo (máx. 1080p), metadados e legendas (manual > automática, **no idioma original**).
+1. `download`: yt-dlp baixa vídeo (máx. 1080p), metadados e legendas (manual > automática, **no idioma original**), mais o gráfico "mais repetidos" (`heatmap`) e os capítulos, quando o YouTube tem (muitos vídeos não têm: sem views suficientes, não há gráfico).
 2. `transcribe`: usa a legenda; se não houver, faster-whisper em CPU. Resultado: segmentos com timestamps.
-3. `energy` + `score`: mede o volume por segundo; Claude recebe transcrição anotada com energia + metadados e devolve trechos (start, end, potential, reason, title, description, hashtags). `sanitize()` aplica os `ClipLimits` dos Ajustes (padrão 12–75 s, até 5 cortes).
+3. `energy` + `score`: mede o volume por segundo; Claude recebe a transcrição anotada (`energia=0-9` e, se houver, `replay=0-9` do "mais repetidos"; linhas `=== Capítulo ... ===`), os metadados e as **decisões do editor** (`feedback.editor_examples`: até 4 aprovados/postados e 4 recusados recentes de outros vídeos, com motivo, nota que a IA deu e o começo/fim do trecho, mais a contagem dos motivos). Devolve trechos (start, end, potential, reason, title, description, hashtags). `sanitize()` aplica os `ClipLimits` dos Ajustes (padrão 12–75 s, até 5 cortes). Sem chave, a heurística usa metade volume, metade replay.
+3b. `boundaries`: para cada corte, o Whisper transcreve o trecho com 3 s de folga de cada lado (uma vez só; as palavras ficam no cache `caption_words` e a legenda reaproveita). Início e fim vão para a melhor quebra a até 2 s: fim de frase (`.` `!` `?`) vale mais que vírgula, pausa longa mais que curta, e se afastar custa. Nunca corta entre pedaços de uma palavra que o Whisper separou (`GT` + `-A6`). Se a mudança quebra os limites de duração, mantém o tempo da IA naquele lado.
 4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado, com o enquadramento do corte), aplica a moldura em uso se houver, queima a legenda por cima de tudo (se ligada no estilo e no corte), normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
 5. Cria `Clip` com status `pending_review` só depois do arquivo renderizado (reprocessar o mesmo vídeo não duplica cortes).
 
@@ -148,7 +151,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 | `/api/health`, `/api/stats` | status do sistema; números do Painel |
 | `/api/videos` | `POST` (link → job `process_video`), `POST /{id}/refresh-views` |
 | `/api/jobs` | lista, `POST /{id}/retry`, `DELETE /{id}` |
-| `/api/clips` | lista por status/ordem, `POST /{id}/status`, `GET /{id}/download`, `GET /{id}/studio`, `PATCH /{id}`, `GET /{id}/autoframe` |
+| `/api/clips` | lista por status/ordem, `GET /reject-reasons`, `POST /{id}/status` (com `reject_reason` ao recusar), `GET /{id}/download`, `GET /{id}/studio`, `PATCH /{id}`, `GET /{id}/autoframe` |
 | `/api/accounts` | CRUD |
 | `/api/warmup` | lista, `POST /{account_id}/start` / `stop` / `check` |
 | `/api/radar` | estado, `PUT /config`, `POST /scan`, `queries` (CRUD), `candidates`, `POST /candidates/{id}/send` |
@@ -205,6 +208,8 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 - `get_settings()` tem `lru_cache`: teste que muda `DATA_DIR` precisa chamar `get_settings.cache_clear()`.
 - faster-whisper 1.2 abre arquivos com PyAV usando `metadata_errors`, que o `av` 19 não aceita: nunca passe caminho ao Whisper, passe o array de `transcribe.decode_audio`.
 - O filtro `ass` do ffmpeg não lida bem com `C:\` no caminho: `cut.render_clip` escreve `captions.ass` numa pasta temporária e roda o ffmpeg com `cwd` nela (por isso os outros caminhos viram absolutos).
+- O Whisper roda em todo corte novo (para ajustar início/fim), mesmo com a legenda desligada; com ela ligada, é a mesma passada.
+- O "mais repetidos" vem da página do vídeo (`heatmap` do yt-dlp) e falta na maioria dos vídeos pequenos/novos; o prompt diz à IA que a coluna `replay` pode não existir.
 - As fontes da legenda precisam existir no Windows (lista fixa em `captions.FONTS`); o libass troca por outra se não achar.
 - **Só um backend por vez.** O `queue.claim_next` não é atômico: dois servidores no mesmo `data/app.db` (ex.: um uvicorn órfão que sobrou depois de fechar o terminal) pegam o mesmo job e o rodam duas vezes. O órfão sem stdout ainda quebra yt-dlp/ffmpeg (`[Errno 22] Invalid argument`, ffmpeg código 3221225794). Antes de subir o dev server, confira se a porta 8000 está livre (`netstat -ano | findstr :8000`) e mate a árvore do processo antigo (`taskkill /T /F /PID ...`).
 - `api.ts` só põe `Content-Type: application/json` quando o corpo é string; upload com `FormData` define o próprio boundary.
@@ -230,5 +235,6 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 4. ~~Aba Postagem: fila manual (baixar, copiar texto, marcar como postado)~~ feito, junto com a aba Contas (lista simples).
 5. ~~Estúdio (com zoom/enquadramento)~~, ~~Painel~~, ~~Ajustes~~, ~~Aquecimento~~ e ~~Moldura~~ feitos.
 6. ~~Legenda queimada estilo TikTok~~ feita.
+7. ~~Escolha melhor dos momentos: "mais repetidos" + capítulos, início/fim nas quebras da fala, motivos de recusa e exemplos do editor no prompt~~ feita.
 
 Próximos candidatos: ver `docs/BACKLOG.md` (detecção de bordas desfocadas).

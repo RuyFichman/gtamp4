@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
+from app.feedback import RejectReason
 from app.models import Account, Clip, ClipStatus, Job, JobStatus, SourceVideo
 from app.pipeline.captions import CaptionStyle
 
@@ -45,6 +46,7 @@ class ClipOut(_UtcModel):
     potential: int
     potential_reason: str
     status: ClipStatus
+    reject_reason: str | None = None
     start_s: float
     end_s: float
     zoom: float = 1.0
@@ -69,6 +71,7 @@ class ClipOut(_UtcModel):
             potential=c.potential,
             potential_reason=c.potential_reason,
             status=c.status,
+            reject_reason=c.reject_reason,
             start_s=c.start_s,
             end_s=c.end_s,
             zoom=c.zoom,
@@ -117,9 +120,16 @@ class AddVideoIn(BaseModel):
 
 class ClipStatusIn(BaseModel):
     status: ClipStatus
+    # only used when status == rejected (optional: "recusar sem motivo")
+    reject_reason: RejectReason | None = None
     # only used when status == posted
     account_id: int | None = None
     post_url: str | None = None
+
+
+class RejectReasonOut(BaseModel):
+    key: str
+    label: str
 
 
 Platform = Literal["tiktok", "instagram", "youtube", "outra"]

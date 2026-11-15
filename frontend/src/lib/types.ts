@@ -21,6 +21,7 @@ export type Job = {
 
 export type ClipStatus = 'pending_review' | 'approved' | 'rejected' | 'posted'
 export type ClipSort = 'potential' | 'recent' | 'views' | 'posted'
+export type RejectReason = { key: string; label: string }
 
 export type Source = {
   id: number
@@ -39,6 +40,7 @@ export type Clip = {
   potential: number
   potential_reason: string
   status: ClipStatus
+  reject_reason: string | null
   start_s: number
   end_s: number
   zoom: number

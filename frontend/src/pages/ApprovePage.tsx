@@ -4,7 +4,7 @@ import { ClipCard } from '../components/ClipCard'
 import { JobList } from '../components/JobList'
 import { StudioModal } from '../components/StudioModal'
 import { api } from '../lib/api'
-import type { Clip, ClipSort, ClipStatus, Job, Source } from '../lib/types'
+import type { Clip, ClipSort, ClipStatus, Job, RejectReason, Source } from '../lib/types'
 
 type Props = { active: boolean; onCountChange: (n: number) => void }
 
@@ -14,6 +14,7 @@ export function ApprovePage({ active, onCountChange }: Props) {
   const [sort, setSort] = useState<ClipSort>('potential')
   const doneIds = useRef(new Set<number>())
   const [studioId, setStudioId] = useState<number | null>(null)
+  const [rejectReasons, setRejectReasons] = useState<RejectReason[]>([])
 
   const loadClips = useCallback(() => {
     api.clips('pending_review', sort).then(setClips).catch(() => {})
@@ -42,10 +43,13 @@ export function ApprovePage({ active, onCountChange }: Props) {
     return () => clearInterval(id)
   }, [loadJobs])
   useEffect(() => onCountChange(clips.length), [clips.length, onCountChange])
+  useEffect(() => {
+    api.rejectReasons().then(setRejectReasons).catch(() => {})
+  }, [])
 
-  function changeStatus(id: number, status: ClipStatus) {
+  function changeStatus(id: number, status: ClipStatus, rejectReason: string | null = null) {
     setClips((list) => list.filter((c) => c.id !== id))
-    api.setClipStatus(id, status).catch(loadClips)
+    api.setClipStatus(id, status, rejectReason).catch(loadClips)
   }
 
   function updateSource(source: Source) {
@@ -60,7 +64,8 @@ export function ApprovePage({ active, onCountChange }: Props) {
       <section>
         <h2 className="text-xl font-bold">Cortes esperando você</h2>
         <p className="text-sm text-zinc-400">
-          Aprovado vai para a fila de postagem. Recusado some daqui.
+          Aprovado vai para a fila de postagem. Recusado some daqui. Os aprovados e os
+          recusados (com o motivo) viram exemplos para a IA escolher os próximos cortes.
         </p>
         <div className="mt-3 flex items-center gap-3 text-sm">
           <label className="flex items-center gap-2 text-zinc-400">
@@ -88,6 +93,7 @@ export function ApprovePage({ active, onCountChange }: Props) {
               <ClipCard
                 key={clip.id}
                 clip={clip}
+                rejectReasons={rejectReasons}
                 onStatus={changeStatus}
                 onSource={updateSource}
                 onStudio={setStudioId}

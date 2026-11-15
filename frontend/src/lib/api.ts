@@ -19,6 +19,7 @@ import type {
   RadarQuery,
   RadarQueryKind,
   RadarStatus,
+  RejectReason,
   Source,
   Stats,
   Studio,
@@ -89,7 +90,9 @@ export const api = {
   dismissJob: (id: number) => request<void>(`/jobs/${id}`, { method: 'DELETE' }),
   clips: (status: ClipStatus, sort: ClipSort) =>
     request<Clip[]>(`/clips?status=${status}&sort=${sort}`),
-  setClipStatus: (id: number, status: ClipStatus) => post<Clip>(`/clips/${id}/status`, { status }),
+  setClipStatus: (id: number, status: ClipStatus, rejectReason: string | null = null) =>
+    post<Clip>(`/clips/${id}/status`, { status, reject_reason: rejectReason }),
+  rejectReasons: () => request<RejectReason[]>('/clips/reject-reasons'),
   markPosted: (id: number, accountId: number | null, postUrl: string) =>
     post<Clip>(`/clips/${id}/status`, {
       status: 'posted',

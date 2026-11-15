@@ -1,5 +1,6 @@
 """Choose the best clip windows of a video. Claude when a key is set, a loudness heuristic otherwise."""
 
+import math
 from dataclasses import dataclass
 
 import anthropic
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.pipeline.energy import mean_between
-from app.pipeline.types import Segment
+from app.pipeline.types import Chapter, HeatPoint, Segment
 
 
 @dataclass(frozen=True)
@@ -40,11 +41,21 @@ _PROMPT = """Você é editor de cortes virais de GTA 6 para TikTok e Instagram R
 Recebe a transcrição com timestamps de um vídeo do YouTube e escolhe os melhores trechos
 para virar cortes verticais curtos.
 
+Sinais na transcrição:
+- "energia" (0-9): volume da voz. Energia alta costuma ser um bom sinal.
+- "replay" (0-9), quando aparece: vem do gráfico "mais repetidos" do YouTube e mostra onde o
+  público real volta para rever. É o sinal mais forte que você tem: trechos com replay alto
+  merecem prioridade, desde que façam sentido sozinhos. Sem a coluna, o vídeo não tem esse dado.
+- Linhas "=== Capítulo ..." marcam os capítulos do vídeo; evite cortes que atravessem capítulos.
+- "Decisões do editor", quando aparecem, são cortes que o editor humano aprovou ou recusou (com o
+  motivo). Use para entender o gosto dele e calibrar a nota; não copie os assuntos.
+
 Regras para cada corte:
 - Entre {min_s:.0f} e {max_s:.0f} segundos; comece e termine em frases completas.
 - Precisa fazer sentido sozinho, sem o resto do vídeo, e prender a atenção nos 2 primeiros segundos.
+- Comece direto na frase que prende: sem cumprimentos, "então", "bom", "é...", "como eu disse".
+  Termine logo depois da conclusão ou da piada, não no começo do assunto seguinte.
 - Prefira: revelações, notícias, opiniões fortes, polêmica, humor, reações e momentos de fala agitada.
-  A coluna "energia" (0-9) indica volume da voz; energia alta costuma ser um bom sinal.
 - potential: nota de 0 a 100 do potencial de viralizar. Seja exigente; reserve 90+ para trechos excepcionais.
 - reason: uma frase curta explicando a nota, em português do Brasil (só o editor lê).
 - title, description e hashtags SEMPRE no idioma falado no vídeo, mesmo que estas instruções
@@ -65,12 +76,42 @@ def _fmt_time(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
-def format_transcript(segments: list[Segment], energy: np.ndarray) -> str:
+def replay_per_second(heatmap: list[HeatPoint], seconds: int) -> np.ndarray:
+    """YouTube's "most replayed" graph as one 0..1 value per second (empty if there is none)."""
+    if not heatmap or seconds <= 0:
+        return np.zeros(0)
+    out = np.zeros(seconds)
+    for point in heatmap:
+        lo = max(0, int(point["start"]))
+        hi = max(lo + 1, math.ceil(point["end"]))
+        out[lo:hi] = np.maximum(out[lo:hi], point["value"])
+    top = float(out.max())
+    return out / top if top > 0 else np.zeros(0)
+
+
+def _level(signal: np.ndarray, start: float, end: float) -> int:
+    return round(mean_between(signal, start, end) * 9)
+
+
+def format_transcript(
+    segments: list[Segment],
+    energy: np.ndarray,
+    replay: np.ndarray | None = None,
+    chapters: list[Chapter] | None = None,
+) -> str:
+    replay = replay if replay is not None else np.zeros(0)
+    pending = sorted(chapters or [], key=lambda c: c["start"])
     lines = []
     for seg in segments:
-        level = round(mean_between(energy, seg["start"], seg["end"]) * 9) if energy.size else 0
-        lines.append(f"[{seg['start']:.1f}-{seg['end']:.1f}] ({_fmt_time(seg['start'])}) "
-                     f"energia={level} | {seg['text']}")  # fmt: skip
+        while pending and pending[0]["start"] <= seg["start"] + 0.5:
+            chapter = pending.pop(0)
+            lines.append(f"=== Capítulo ({_fmt_time(chapter['start'])}): {chapter['title']} ===")
+        cols = f"energia={_level(energy, seg['start'], seg['end']) if energy.size else 0}"
+        if replay.size:
+            cols += f" replay={_level(replay, seg['start'], seg['end'])}"
+        lines.append(
+            f"[{seg['start']:.1f}-{seg['end']:.1f}] ({_fmt_time(seg['start'])}) {cols} | {seg['text']}"
+        )
     return "\n".join(lines)
 
 
@@ -99,6 +140,32 @@ def sanitize(
     return result[: limits.max_clips]
 
 
+def user_message(
+    *,
+    title: str,
+    channel: str,
+    language: str | None,
+    description: str,
+    views: int | None,
+    transcript: str,
+    examples: str = "",
+) -> str:
+    lang_line = (
+        f"Idioma falado no vídeo (YouTube): {language}. "
+        f"Escreva title, description e hashtags nesse idioma ({language}).\n"
+        if language
+        else "Idioma falado: descubra pela transcrição e escreva title/description nele.\n"
+    )
+    parts = [
+        f"{lang_line}Título: {title}\nCanal: {channel}\nViews: {views}\n"
+        f"Descrição do vídeo:\n{description[:1500]}"
+    ]
+    if examples:
+        parts.append(examples)
+    parts.append(f"Transcrição ([início-fim] em segundos):\n{transcript}")
+    return "\n\n".join(parts)
+
+
 def plan_with_claude(
     *,
     title: str,
@@ -111,19 +178,20 @@ def plan_with_claude(
     duration: float | None,
     limits: ClipLimits,
     model: str,
+    replay: np.ndarray | None = None,
+    chapters: list[Chapter] | None = None,
+    examples: str = "",
 ) -> list[ClipIdea]:
     settings = get_settings()
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    lang_line = (
-        f"Idioma falado no vídeo (YouTube): {language}. "
-        f"Escreva title, description e hashtags nesse idioma ({language}).\n"
-        if language
-        else "Idioma falado: descubra pela transcrição e escreva title/description nele.\n"
-    )
-    user = (
-        f"{lang_line}Título: {title}\nCanal: {channel}\nViews: {views}\n"
-        f"Descrição do vídeo:\n{description[:1500]}\n\n"
-        f"Transcrição ([início-fim] em segundos):\n{format_transcript(segments, energy)}"
+    user = user_message(
+        title=title,
+        channel=channel,
+        language=language,
+        description=description,
+        views=views,
+        transcript=format_transcript(segments, energy, replay, chapters),
+        examples=examples,
     )
     last_error: Exception | None = None
     for _ in range(2):  # one retry on bad output
@@ -150,8 +218,17 @@ def plan_heuristic(
     energy: np.ndarray,
     duration: float | None,
     limits: ClipLimits = ClipLimits(),
+    replay: np.ndarray | None = None,
 ) -> list[ClipIdea]:
-    """No API key: pick the loudest non-overlapping ~40s windows that contain speech."""
+    """No API key: pick the loudest non-overlapping ~40s windows that contain speech
+    (half loudness, half "most replayed" when the video has that graph)."""
+    replay = replay if replay is not None else np.zeros(0)
+    has_replay = replay.size > 0
+
+    def level(start: int) -> float:
+        e = mean_between(energy, start, start + window)
+        return 0.5 * e + 0.5 * mean_between(replay, start, start + window) if has_replay else e
+
     total = int(duration or (segments[-1]["end"] if segments else 0))
     window = int(min(max(40, limits.min_s), limits.max_s))
     if total < limits.min_s or energy.size == 0:
@@ -162,7 +239,7 @@ def plan_heuristic(
         speech[int(seg["start"]) : int(seg["end"]) + 1] = 1
     scores = []
     for start in range(0, max(1, total - window + 1), 5):
-        e = mean_between(energy, start, start + window)
+        e = level(start)
         s = float(speech[start : start + window].mean()) if segments else 1.0
         scores.append((e * (0.5 + 0.5 * s), start))
     scores.sort(reverse=True)
@@ -174,13 +251,15 @@ def plan_heuristic(
             break
     ideas = []
     for i, start in enumerate(picked, 1):
-        score = mean_between(energy, start, start + window)
+        score = level(start)
         ideas.append(
             ClipIdea(
                 start_s=float(start),
                 end_s=float(start + window),
                 potential=int(score * 70),
-                reason="Escolhido pela fala mais agitada (heurística, IA desligada)",
+                reason="Escolhido pela fala mais agitada"
+                + (" e pelo trecho mais repetido" if has_replay else "")
+                + " (heurística, IA desligada)",
                 title=f"{title} (parte {i})"[:90],
                 description="",
                 hashtags=[],

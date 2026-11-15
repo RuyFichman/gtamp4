@@ -1,17 +1,19 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { formatDateTime, formatDuration, formatViews, sourceAt } from '../lib/format'
-import type { Clip, ClipStatus, Source } from '../lib/types'
+import type { Clip, ClipStatus, RejectReason, Source } from '../lib/types'
 
 type Props = {
   clip: Clip
-  onStatus: (id: number, status: ClipStatus) => void
+  rejectReasons: RejectReason[]
+  onStatus: (id: number, status: ClipStatus, rejectReason?: string | null) => void
   onSource: (source: Source) => void
   onStudio: (id: number) => void
 }
 
-export function ClipCard({ clip, onStatus, onSource, onStudio }: Props) {
+export function ClipCard({ clip, rejectReasons, onStatus, onSource, onStudio }: Props) {
   const [refreshing, setRefreshing] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { source } = clip
 
@@ -89,33 +91,64 @@ export function ClipCard({ clip, onStatus, onSource, onStudio }: Props) {
           )}
         </p>
 
-        <div className="mt-auto grid grid-cols-3 gap-1.5 pt-2">
-          <button
-            onClick={() => onStatus(clip.id, 'approved')}
-            className="rounded bg-pink-500 py-1.5 font-semibold text-white hover:bg-pink-400"
-          >
-            Aprovar
-          </button>
-          <button
-            onClick={() => onStatus(clip.id, 'rejected')}
-            className="rounded border border-white/20 py-1.5 hover:bg-white/10"
-          >
-            Recusar
-          </button>
-          <button
-            onClick={() => onStudio(clip.id)}
-            title="Ajustar início/fim e texto"
-            className="rounded border border-white/20 py-1.5 hover:bg-white/10"
-          >
-            Estúdio
-          </button>
-          <a
-            href={api.clipDownloadUrl(clip.id)}
-            className="col-span-3 rounded border border-white/20 py-1.5 text-center hover:bg-white/10"
-          >
-            Baixar
-          </a>
-        </div>
+        {rejecting ? (
+          <div className="mt-auto space-y-1.5 pt-2">
+            <p className="text-zinc-300">Por que recusar? Isso ensina a IA.</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {rejectReasons.map((r) => (
+                <button
+                  key={r.key}
+                  onClick={() => onStatus(clip.id, 'rejected', r.key)}
+                  className="rounded border border-white/20 px-1 py-1.5 hover:bg-white/10"
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => onStatus(clip.id, 'rejected', null)}
+                className="rounded py-1.5 text-zinc-400 hover:bg-white/10"
+              >
+                Sem motivo
+              </button>
+              <button
+                onClick={() => setRejecting(false)}
+                className="rounded py-1.5 text-zinc-400 hover:bg-white/10"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-auto grid grid-cols-3 gap-1.5 pt-2">
+            <button
+              onClick={() => onStatus(clip.id, 'approved')}
+              className="rounded bg-pink-500 py-1.5 font-semibold text-white hover:bg-pink-400"
+            >
+              Aprovar
+            </button>
+            <button
+              onClick={() => setRejecting(true)}
+              className="rounded border border-white/20 py-1.5 hover:bg-white/10"
+            >
+              Recusar
+            </button>
+            <button
+              onClick={() => onStudio(clip.id)}
+              title="Ajustar início/fim e texto"
+              className="rounded border border-white/20 py-1.5 hover:bg-white/10"
+            >
+              Estúdio
+            </button>
+            <a
+              href={api.clipDownloadUrl(clip.id)}
+              className="col-span-3 rounded border border-white/20 py-1.5 text-center hover:bg-white/10"
+            >
+              Baixar
+            </a>
+          </div>
+        )}
       </div>
     </article>
   )

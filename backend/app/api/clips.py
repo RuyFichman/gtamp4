@@ -12,10 +12,12 @@ from app.api.schemas import (
     ClipOut,
     ClipStatusIn,
     JobOut,
+    RejectReasonOut,
     Segment,
     StudioOut,
 )
 from app.db import get_session
+from app.feedback import REJECT_REASONS
 from app.jobs import queue
 from app.jobs.handlers import (
     RENDER_CLIP,
@@ -56,6 +58,11 @@ def list_clips(
     return [ClipOut.of(c, v, rendering=c.id in rendering) for c, v in rows]
 
 
+@router.get("/reject-reasons")
+def reject_reasons() -> list[RejectReasonOut]:
+    return [RejectReasonOut(key=k, label=label) for k, (label, _) in REJECT_REASONS.items()]
+
+
 @router.post("/{clip_id}/status")
 def set_status(clip_id: int, body: ClipStatusIn, session: SessionDep) -> ClipOut:
     clip = session.get(Clip, clip_id)
@@ -71,6 +78,7 @@ def set_status(clip_id: int, body: ClipStatusIn, session: SessionDep) -> ClipOut
         clip.account_id = None
         clip.post_url = None
         clip.posted_at = None
+    clip.reject_reason = body.reject_reason if body.status == ClipStatus.REJECTED else None
     clip.status = body.status
     session.add(clip)
     session.commit()

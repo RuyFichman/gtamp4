@@ -4,12 +4,13 @@ from pathlib import Path
 
 from sqlmodel import Session, col, select
 
+from app import feedback
 from app.config import get_settings
 from app.jobs import queue
 from app.jobs.worker import handler
 from app.models import Clip, FrameTemplate, Job, JobStatus, SourceVideo, utcnow
-from app.pipeline import captions, cut, download, energy, score, transcribe
-from app.pipeline.types import Word
+from app.pipeline import boundaries, captions, cut, download, energy, score, transcribe
+from app.pipeline.types import Chapter, HeatPoint, Word
 from app.store import AppConfig, get_app_config, get_caption_style
 
 PROCESS_VIDEO = "process_video"
@@ -27,12 +28,18 @@ def _default_frame(session: Session) -> Path | None:
 
 
 class _Captioner:
-    """Builds the .ass for a clip; loads Whisper once per job and only if a clip needs it."""
+    """Word timings (Whisper) for captions and edge snapping; loads Whisper once per job and
+    only if a clip needs it. Words are cached on the clip with the window they cover."""
 
     def __init__(self, session: Session, cfg: AppConfig, src: Path, language: str | None):
         self.style = get_caption_style(session)
         self.cfg, self.src, self.language = cfg, src, language
         self._model: object | None = None
+
+    def transcribe(self, start: float, end: float) -> list[Word]:
+        if self._model is None:
+            self._model = captions.load_whisper(self.cfg.whisper_model)
+        return captions.transcribe_words(self._model, self.src, start, end, self.language)
 
     def words(self, clip: Clip, start: float, end: float) -> list[Word]:
         """Cached words if they cover [start, end]; otherwise Whisper on that window."""
@@ -40,9 +47,7 @@ class _Captioner:
             lo, hi = clip.caption_range
             if lo <= start + 0.01 and hi >= end - 0.01:
                 return [Word(**w) for w in clip.caption_words]
-        if self._model is None:
-            self._model = captions.load_whisper(self.cfg.whisper_model)
-        words = captions.transcribe_words(self._model, self.src, start, end, self.language)
+        words = self.transcribe(start, end)
         clip.caption_words = [dict(w) for w in words]
         clip.caption_range = [start, end]
         return words
@@ -75,6 +80,9 @@ def process_video(session: Session, job: Job) -> None:
     video.views = info.views
     video.views_checked_at = utcnow()
     video.language = info.language
+    # the graph shows up once a video has enough views; keep the last one we saw
+    video.heatmap = [dict(h) for h in info.heatmap] or video.heatmap
+    video.chapters = [dict(c) for c in info.chapters] or video.chapters
     session.add(video)
     session.commit()
     session.refresh(video)
@@ -98,6 +106,9 @@ def process_video(session: Session, job: Job) -> None:
 
     _step(session, job, 0.5, "Medindo energia do áudio")
     loud = energy.loudness_per_second(path)
+    heatmap = [HeatPoint(**h) for h in video.heatmap or []]
+    replay = score.replay_per_second(heatmap, int(video.duration_s or 0))
+    chapters = [Chapter(**c) for c in video.chapters or []]
 
     if settings.anthropic_api_key:
         _step(session, job, 0.55, "Analisando com IA")
@@ -112,9 +123,12 @@ def process_video(session: Session, job: Job) -> None:
             duration=video.duration_s,
             limits=limits,
             model=cfg.model_writer,
+            replay=replay,
+            chapters=chapters,
+            examples=feedback.editor_examples(session, exclude_video_id=video.id),
         )
     else:
-        ideas = score.plan_heuristic(video.title, segments, loud, video.duration_s, limits)
+        ideas = score.plan_heuristic(video.title, segments, loud, video.duration_s, limits, replay)
 
     if not ideas:
         _step(session, job, 1.0, "Nenhum trecho bom encontrado")
@@ -122,19 +136,30 @@ def process_video(session: Session, job: Job) -> None:
 
     frame = _default_frame(session)
     captioner = _Captioner(session, cfg, path, video.language)
+    end_limit = video.duration_s or float("inf")
     for i, idea in enumerate(ideas, 1):
         progress = 0.6 + 0.4 * (i - 1) / len(ideas)
-        dst = settings.clips_dir / f"{video.youtube_id}_{idea.start_s:.0f}-{idea.end_s:.0f}.mp4"
+        # one Whisper pass per clip, with margin: snaps the edges to the nearest sentence
+        # end / pause and is reused (cache) by the burned-in captions
+        _step(session, job, progress, f"Ajustando início e fim {i} de {len(ideas)}")
+        lo = max(0.0, idea.start_s - boundaries.PAD_S)
+        hi = min(end_limit, idea.end_s + boundaries.PAD_S)
+        words = captioner.transcribe(lo, hi)
+        start, end = boundaries.snap_clip(
+            words, idea.start_s, idea.end_s, limits.min_s, limits.max_s, (lo, hi)
+        )
+        dst = settings.clips_dir / f"{video.youtube_id}_{start:.0f}-{end:.0f}.mp4"
         # reprocessing the same video must not duplicate a clip (keeps its status)
         clip = session.exec(select(Clip).where(Clip.file_path == str(dst))).first() or Clip(
-            source_video_id=video.id or 0, start_s=idea.start_s, end_s=idea.end_s
+            source_video_id=video.id or 0, start_s=start, end_s=end
         )
+        clip.caption_words, clip.caption_range = [dict(w) for w in words], [lo, hi]
         ass = None
         if captioner.style.enabled and clip.captions:
             _step(session, job, progress, f"Legendando {i} de {len(ideas)}")
-            ass = captioner.ass(clip, idea.start_s, idea.end_s)
+            ass = captioner.ass(clip, start, end)
         _step(session, job, progress, f"Cortando {i} de {len(ideas)}")
-        cut.render_clip(path, dst, idea.start_s, idea.end_s, frame, cfg.video_encoder, ass=ass)
+        cut.render_clip(path, dst, start, end, frame, cfg.video_encoder, ass=ass)
         clip.title = idea.title
         clip.description = idea.description
         clip.hashtags = idea.hashtags

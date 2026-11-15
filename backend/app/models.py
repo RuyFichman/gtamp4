@@ -37,6 +37,10 @@ class SourceVideo(SQLModel, table=True):
     views_checked_at: datetime | None = None
     file_path: str | None = None
     transcript: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
+    # YouTube "most replayed" graph and chapters (pipeline.types HeatPoint / Chapter);
+    # many videos have neither
+    heatmap: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
+    chapters: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -61,6 +65,7 @@ class Clip(SQLModel, table=True):
     caption_words: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
     caption_range: list[float] | None = Field(default=None, sa_column=Column(JSON))
     status: ClipStatus = Field(default=ClipStatus.PENDING_REVIEW, index=True)
+    reject_reason: str | None = None  # app.feedback.RejectReason, set when rejected
     account_id: int | None = Field(default=None, foreign_key="account.id")
     post_url: str | None = None
     posted_at: datetime | None = None

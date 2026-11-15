@@ -13,3 +13,17 @@ class Word(TypedDict):
     start: float
     end: float
     word: str
+
+
+class HeatPoint(TypedDict):
+    """One slice of YouTube's "most replayed" graph; value is 0..1 (1 = most replayed)."""
+
+    start: float
+    end: float
+    value: float
+
+
+class Chapter(TypedDict):
+    start: float
+    end: float
+    title: str

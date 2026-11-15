@@ -8,6 +8,8 @@ from typing import Any
 
 import yt_dlp
 
+from app.pipeline.types import Chapter, HeatPoint
+
 YOUTUBE_ID = re.compile(r"(?:v=|youtu\.be/|shorts/|live/|embed/)([A-Za-z0-9_-]{11})")
 
 BASE_OPTS: dict[str, Any] = {
@@ -37,6 +39,36 @@ class VideoInfo:
     views: int | None
     language: str | None
     subtitle_json3: dict[str, Any] | None = field(default=None, repr=False)
+    heatmap: list[HeatPoint] = field(default_factory=list, repr=False)
+    chapters: list[Chapter] = field(default_factory=list)
+
+
+def parse_heatmap(info: dict[str, Any]) -> list[HeatPoint]:
+    """YouTube's "most replayed" graph (only on videos YouTube shows it for)."""
+    out: list[HeatPoint] = []
+    for h in info.get("heatmap") or []:
+        try:
+            out.append(
+                HeatPoint(
+                    start=round(float(h["start_time"]), 2),
+                    end=round(float(h["end_time"]), 2),
+                    value=round(float(h["value"]), 3),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+def parse_chapters(info: dict[str, Any]) -> list[Chapter]:
+    out: list[Chapter] = []
+    for c in info.get("chapters") or []:
+        try:
+            start, end = float(c["start_time"]), float(c["end_time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        out.append(Chapter(start=round(start, 2), end=round(end, 2), title=str(c.get("title", ""))))
+    return out
 
 
 def _original_language(info: dict[str, Any]) -> str | None:
@@ -81,6 +113,8 @@ def fetch_info(url: str) -> VideoInfo:
         views=info.get("view_count"),
         language=lang,
         subtitle_json3=subtitle,
+        heatmap=parse_heatmap(info),
+        chapters=parse_chapters(info),
     )
 
 
