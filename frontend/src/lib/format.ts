@@ -28,9 +28,12 @@ export const PLATFORM_LABEL: Record<string, string> = {
 }
 
 /** Caption pasted into TikTok/Instagram: description + hashtags. */
-export function captionText(description: string, hashtags: string[]): string {
+/** Post caption: description, credit to the source channel, hashtags. The credit is added here
+ * (not stored in the clip) so it reaches every clip and stays out of the AI's examples. */
+export function captionText(description: string, hashtags: string[], channel = ''): string {
   const tags = hashtags.map((h) => `#${h}`).join(' ')
-  return [description.trim(), tags].filter(Boolean).join('\n\n')
+  const credit = channel.trim() && `Canal original: ${channel.trim()}`
+  return [description.trim(), credit, tags].filter(Boolean).join('\n\n')
 }
 
 /** 83.4 -> "1:23.4" (Studio precision) */

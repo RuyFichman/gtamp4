@@ -18,7 +18,7 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio, onSh
   const [postUrl, setPostUrl] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const caption = captionText(clip.description, clip.hashtags)
+  const caption = captionText(clip.description, clip.hashtags, clip.source.channel)
 
   async function markPosted() {
     setSaving(true)
