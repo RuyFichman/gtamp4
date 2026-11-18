@@ -8,6 +8,7 @@ from sqlmodel import Session, col, select
 
 from app.api.schemas import (
     AutoFrameOut,
+    ClipArchiveIn,
     ClipEditIn,
     ClipOut,
     ClipStatusIn,
@@ -47,11 +48,12 @@ def list_clips(
     session: SessionDep,
     status: ClipStatus = ClipStatus.PENDING_REVIEW,
     sort: Literal["potential", "recent", "views", "posted"] = "potential",
+    archived: bool = False,
 ) -> list[ClipOut]:
     rows = session.exec(
         select(Clip, SourceVideo)
         .join(SourceVideo, col(Clip.source_video_id) == col(SourceVideo.id))
-        .where(Clip.status == status)
+        .where(Clip.status == status, Clip.archived == archived)
         .order_by(SORTS[sort], col(Clip.id).desc())
     ).all()
     rendering = pending_renders(session)
@@ -85,6 +87,17 @@ def set_status(clip_id: int, body: ClipStatusIn, session: SessionDep) -> ClipOut
     session.refresh(clip)
     video = session.get(SourceVideo, clip.source_video_id)
     assert video is not None
+    return ClipOut.of(clip, video)
+
+
+@router.post("/{clip_id}/archive")
+def set_archived(clip_id: int, body: ClipArchiveIn, session: SessionDep) -> ClipOut:
+    """Move a clip to/from the "Pré-lançamento" tab; its status (and what it teaches) stays."""
+    clip, video = _load(session, clip_id)
+    clip.archived = body.archived
+    session.add(clip)
+    session.commit()
+    session.refresh(clip)
     return ClipOut.of(clip, video)
 
 

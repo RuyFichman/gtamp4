@@ -91,6 +91,7 @@ gtamp4/
 | **Painel** | Estatísticas (`GET /api/stats`, `app/stats.py`): fila de aprovação/postagem, taxa de aprovação, cortes por dia (14 dias, fuso da máquina), potencial médio aprovados vs. recusados, postados por conta, Radar, jobs, disco. Gráfico em SVG próprio (sem lib), cores validadas para daltonismo |
 | **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, Estúdio, baixar). "Recusar" pede o motivo (botões; "Sem motivo" também vale), que ensina a IA (ver Pipeline). Fica montada o tempo todo para o polling e o contador da aba seguirem funcionando |
 | **Postagem** | Cortes aprovados aguardando postagem manual: baixar vídeo, copiar título/descrição/hashtags, escolher a conta e marcar como "postado" (com link do post, opcional). Lista dos já postados |
+| **Pré-lançamento** | Mesma tela da Postagem (`PostPage archived`) para os cortes com `Clip.archived` (o lote de curiosidades de antes do lançamento do GTA 6), mais os que ainda esperam aprovação. Ficam fora de Aprovar/Postagem e das filas do Painel, mas o status não muda: continuam como exemplos da IA e no histórico dos canais. Botão "Pré-lançamento" / "Para Postagem" no card move entre as abas |
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
 | **Aquecimento** | Checklist **manual** de 14 dias por conta (`app/warmup.py`: 3 fases, tarefas diárias e "uma vez", tabela `warmupcheck`, dia local da máquina). Só registra o que o usuário marcou; nunca automatizar (ver Regras) |
 | **Radar** | Busca automática de vídeos novos de GTA 6 por termos/canais, com intervalo e limite diário configuráveis (ver seção Radar). A lista mostra inscritos, views por hora, o histórico do canal ("Canal: X de Y cortes aprovados por você") e a posição na fila de espera |
@@ -104,7 +105,7 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 ## Modelo de dados (resumo)
 
 - `SourceVideo`: youtube_id, url, título, canal, idioma, duração, views, views_checked_at, transcrição, heatmap (gráfico "mais repetidos" do YouTube) e chapters (capítulos), file_path (some quando a limpeza apaga o original).
-- `Clip`: source_video_id, start_s, end_s, ai_start_s/ai_end_s (início/fim que o app entregou; o Estúdio não mexe), título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, reject_reason (chave de `feedback.REJECT_REASONS`, só quando recusado), zoom/pan_x/pan_y (enquadramento), captions (legenda liga/desliga) + caption_words/caption_range (cache das palavras do Whisper e a janela que cobrem), account_id, post_url, posted_at.
+- `Clip`: source_video_id, start_s, end_s, ai_start_s/ai_end_s (início/fim que o app entregou; o Estúdio não mexe), título, descrição, hashtags, potential (0–100), potential_reason, file_path, status, reject_reason (chave de `feedback.REJECT_REASONS`, só quando recusado), archived (aba Pré-lançamento), zoom/pan_x/pan_y (enquadramento), captions (legenda liga/desliga) + caption_words/caption_range (cache das palavras do Whisper e a janela que cobrem), account_id, post_url, posted_at.
 - `Job`: kind, payload (JSON), status, progresso, mensagem, erro, tentativas, timestamps.
 - `Account` (+ `warmup_started_on`), `WarmupCheck`, `FrameTemplate` (name, overlay_path, is_default), `RadarQuery`, `RadarCandidate` (+ channel_id, published_at aproximado, subscribers, views_per_hour medido quando achado), `RadarChannel` (cache de inscritos por canal, 7 dias), `Setting` (chave/valor JSON).
 
@@ -159,7 +160,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 | `/api/health`, `/api/stats` | status do sistema; números do Painel |
 | `/api/videos` | `POST` (link → job `process_video`), `POST /{id}/refresh-views` |
 | `/api/jobs` | lista, `POST /{id}/retry`, `DELETE /{id}` |
-| `/api/clips` | lista por status/ordem, `GET /reject-reasons`, `POST /{id}/status` (com `reject_reason` ao recusar), `GET /{id}/download`, `GET /{id}/studio`, `PATCH /{id}`, `GET /{id}/autoframe` |
+| `/api/clips` | lista por status/ordem (`archived=true` para o Pré-lançamento), `GET /reject-reasons`, `POST /{id}/archive`, `POST /{id}/status` (com `reject_reason` ao recusar), `GET /{id}/download`, `GET /{id}/studio`, `PATCH /{id}`, `GET /{id}/autoframe` |
 | `/api/accounts` | CRUD |
 | `/api/warmup` | lista, `POST /{account_id}/start` / `stop` / `check` |
 | `/api/radar` | estado, `PUT /config`, `POST /scan`, `queries` (CRUD), `candidates` (com `queue_position` e `channel_record`), `POST /candidates/{id}/send` |

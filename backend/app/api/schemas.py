@@ -59,6 +59,7 @@ class ClipOut(_UtcModel):
     post_url: str | None
     posted_at: datetime | None
     rendering: bool = False  # a Studio re-render is queued/running
+    archived: bool = False
     source: SourceOut
 
     @classmethod
@@ -84,6 +85,7 @@ class ClipOut(_UtcModel):
             post_url=c.post_url,
             posted_at=c.posted_at,
             rendering=rendering,
+            archived=c.archived,
             source=SourceOut.of(v),
         )
 
@@ -116,6 +118,10 @@ class JobOut(_UtcModel):
 
 class AddVideoIn(BaseModel):
     url: str
+
+
+class ClipArchiveIn(BaseModel):
+    archived: bool
 
 
 class ClipStatusIn(BaseModel):

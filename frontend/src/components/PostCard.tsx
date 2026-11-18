@@ -10,9 +10,10 @@ type Props = {
   onPosted: (clip: Clip) => void
   onUnapprove: (id: number) => void
   onStudio: (id: number) => void
+  onShelf: (id: number) => void // in/out of the "Pré-lançamento" tab
 }
 
-export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio }: Props) {
+export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio, onShelf }: Props) {
   const [accountId, setAccountId] = useState<number | ''>('')
   const [postUrl, setPostUrl] = useState('')
   const [saving, setSaving] = useState(false)
@@ -124,6 +125,17 @@ export function PostCard({ clip, accounts, onPosted, onUnapprove, onStudio }: Pr
             className="rounded border border-white/15 bg-white/5 px-3 py-1.5 hover:border-white/25 hover:bg-white/10"
           >
             Devolver
+          </button>
+          <button
+            onClick={() => onShelf(clip.id)}
+            title={
+              clip.archived
+                ? 'Volta para a aba Postagem'
+                : 'Guarda na aba Pré-lançamento (continua ensinando a IA)'
+            }
+            className="rounded border border-white/15 bg-white/5 px-3 py-1.5 hover:border-white/25 hover:bg-white/10"
+          >
+            {clip.archived ? 'Para Postagem' : 'Pré-lançamento'}
           </button>
         </div>
       </div>

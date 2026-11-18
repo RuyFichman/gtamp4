@@ -88,8 +88,10 @@ export const api = {
   jobs: () => request<Job[]>('/jobs'),
   retryJob: (id: number) => post<Job>(`/jobs/${id}/retry`),
   dismissJob: (id: number) => request<void>(`/jobs/${id}`, { method: 'DELETE' }),
-  clips: (status: ClipStatus, sort: ClipSort) =>
-    request<Clip[]>(`/clips?status=${status}&sort=${sort}`),
+  clips: (status: ClipStatus, sort: ClipSort, archived = false) =>
+    request<Clip[]>(`/clips?status=${status}&sort=${sort}&archived=${archived}`),
+  setClipArchived: (id: number, archived: boolean) =>
+    post<Clip>(`/clips/${id}/archive`, { archived }),
   setClipStatus: (id: number, status: ClipStatus, rejectReason: string | null = null) =>
     post<Clip>(`/clips/${id}/status`, { status, reject_reason: rejectReason }),
   rejectReasons: () => request<RejectReason[]>('/clips/reject-reasons'),

@@ -53,6 +53,7 @@ export type Clip = {
   post_url: string | null
   posted_at: string | null
   rendering: boolean
+  archived: boolean
   source: Source
 }
 
@@ -167,7 +168,15 @@ export type RadarCandidate = {
 export type DayStat = { date: string; generated: number; posted: number }
 
 export type Stats = {
-  clips: { pending_review: number; approved: number; rejected: number; posted: number; total: number }
+  clips: {
+    pending_review: number
+    approved: number
+    rejected: number
+    posted: number
+    total: number
+    archived_pending_review: number
+    archived_approved: number
+  }
   approval_rate: number | null
   avg_potential_kept: number | null
   avg_potential_rejected: number | null

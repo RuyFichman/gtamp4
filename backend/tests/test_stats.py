@@ -31,6 +31,7 @@ def test_stats_counts_rates_days_and_accounts() -> None:
             [
                 clip(ClipStatus.PENDING_REVIEW, 50),
                 clip(ClipStatus.APPROVED, 80),
+                clip(ClipStatus.APPROVED, 70, archived=True),  # "Pré-lançamento" tab
                 clip(ClipStatus.POSTED, 90, account_id=acc.id, posted_at=now),
                 clip(ClipStatus.REJECTED, 40),
                 clip(ClipStatus.REJECTED, 20, created_at=now - timedelta(days=3)),
@@ -43,15 +44,17 @@ def test_stats_counts_rates_days_and_accounts() -> None:
 
         out = stats.compute(s, today=now.astimezone().date())
 
-    assert out.clips.total == 6
+    assert out.clips.total == 7
     assert (out.clips.pending_review, out.clips.posted, out.clips.rejected) == (1, 1, 3)
-    assert out.approval_rate == 0.4  # 2 kept of 5 reviewed
-    assert out.avg_potential_kept == 85.0
+    assert (out.clips.approved, out.clips.archived_approved) == (2, 1)
+    assert out.clips.archived_pending_review == 0
+    assert out.approval_rate == 0.5  # 3 kept of 6 reviewed (archived ones still count)
+    assert out.avg_potential_kept == 80.0
     assert out.avg_potential_rejected == 23.3
     assert len(out.days) == stats.DAYS
-    assert out.days[-1].generated == 4 and out.days[-1].posted == 1
+    assert out.days[-1].generated == 5 and out.days[-1].posted == 1
     assert out.days[-4].generated == 1
-    assert sum(d.generated for d in out.days) == 5
+    assert sum(d.generated for d in out.days) == 6
     assert out.accounts[0].posted == 1 and out.accounts[0].last_posted_at is not None
     assert out.jobs.failed == 1
     assert out.radar.enabled is False

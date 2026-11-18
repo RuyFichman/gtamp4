@@ -31,6 +31,9 @@ class ClipCounts(BaseModel):
     rejected: int = 0
     posted: int = 0
     total: int = 0
+    # of pending_review/approved, how many sit in the "Pré-lançamento" tab (not in the queues)
+    archived_pending_review: int = 0
+    archived_approved: int = 0
 
 
 class Day(BaseModel):
@@ -165,7 +168,13 @@ def _radar(session: Session) -> RadarStat:
 
 def compute(session: Session, today: date | None = None) -> Stats:
     clips = list(session.exec(select(Clip)).all())
-    counts = ClipCounts(total=len(clips), **Counter(str(c.status) for c in clips))
+    shelved = Counter(c.status for c in clips if c.archived)
+    counts = ClipCounts(
+        total=len(clips),
+        archived_pending_review=shelved[ClipStatus.PENDING_REVIEW],
+        archived_approved=shelved[ClipStatus.APPROVED],
+        **Counter(str(c.status) for c in clips),
+    )
     kept = [c.potential for c in clips if c.status in (ClipStatus.APPROVED, ClipStatus.POSTED)]
     rejected = [c.potential for c in clips if c.status == ClipStatus.REJECTED]
     reviewed = len(kept) + len(rejected)

@@ -13,6 +13,7 @@ const TABS = [
   'Painel',
   'Aprovar',
   'Postagem',
+  'Pré-lançamento',
   'Contas',
   'Aquecimento',
   'Radar',
@@ -66,6 +67,7 @@ export default function App() {
         {/* mounted on open so they always show fresh data */}
         {tab === 'Painel' && <DashboardPage onNavigate={setTab} />}
         {tab === 'Postagem' && <PostPage />}
+        {tab === 'Pré-lançamento' && <PostPage archived />}
         {tab === 'Contas' && <AccountsPage />}
         {tab === 'Aquecimento' && <WarmupPage onOpenAccounts={() => setTab('Contas')} />}
         {tab === 'Radar' && <RadarPage />}

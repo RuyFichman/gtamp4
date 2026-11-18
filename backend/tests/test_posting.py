@@ -81,3 +81,22 @@ def test_deleting_account_keeps_posted_clip(client: TestClient) -> None:
     assert client.delete(f"/api/accounts/{acc['id']}").status_code == 204
     posted = client.get("/api/clips?status=posted&sort=posted").json()
     assert len(posted) == 1 and posted[0]["account_id"] is None
+
+
+def test_archive_moves_clip_out_of_the_queue_and_keeps_status(client: TestClient) -> None:
+    assert [c["id"] for c in client.get("/api/clips?status=approved").json()] == [1]
+
+    r = client.post("/api/clips/1/archive", json={"archived": True})
+    assert r.status_code == 200
+    assert r.json()["archived"] is True and r.json()["status"] == "approved"
+    assert client.get("/api/clips?status=approved").json() == []
+    shelf = client.get("/api/clips?status=approved&archived=true").json()
+    assert [c["id"] for c in shelf] == [1]
+
+    # status changes keep it on the shelf (approving/posting from the "Pré-lançamento" tab)
+    client.post("/api/clips/1/status", json={"status": "posted"})
+    assert client.get("/api/clips?status=posted&archived=true").json()[0]["id"] == 1
+
+    client.post("/api/clips/1/archive", json={"archived": False})
+    assert client.get("/api/clips?status=posted").json()[0]["archived"] is False
+    assert client.post("/api/clips/99/archive", json={"archived": True}).status_code == 404

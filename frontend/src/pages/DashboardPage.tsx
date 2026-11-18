@@ -40,13 +40,13 @@ export function DashboardPage({ onNavigate }: { onNavigate: (tab: NavTarget) => 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Esperando aprovação"
-          value={clips.pending_review}
+          value={clips.pending_review - clips.archived_pending_review}
           hint="Abrir a aba Aprovar"
           onClick={() => onNavigate('Aprovar')}
         />
         <StatTile
           label="Prontos para postar"
-          value={clips.approved}
+          value={clips.approved - clips.archived_approved}
           hint="Abrir a aba Postagem"
           onClick={() => onNavigate('Postagem')}
         />

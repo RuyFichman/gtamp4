@@ -69,6 +69,9 @@ class Clip(SQLModel, table=True):
     caption_words: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON))
     caption_range: list[float] | None = Field(default=None, sa_column=Column(JSON))
     status: ClipStatus = Field(default=ClipStatus.PENDING_REVIEW, index=True)
+    # shelved in the "Pré-lançamento" tab (pre-release batch): hidden from Aprovar/Postagem but
+    # the status is kept, so it still teaches the AI and counts in the channel history
+    archived: bool = False
     reject_reason: str | None = None  # app.feedback.RejectReason, set when rejected
     account_id: int | None = Field(default=None, foreign_key="account.id")
     post_url: str | None = None
