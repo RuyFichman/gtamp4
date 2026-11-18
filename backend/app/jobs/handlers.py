@@ -154,6 +154,8 @@ def process_video(session: Session, job: Job) -> None:
             source_video_id=video.id or 0, start_s=start, end_s=end
         )
         clip.caption_words, clip.caption_range = [dict(w) for w in words], [lo, hi]
+        if clip.ai_start_s is None:
+            clip.ai_start_s, clip.ai_end_s = start, end
         ass = None
         if captioner.style.enabled and clip.captions:
             _step(session, job, progress, f"Legendando {i} de {len(ideas)}")

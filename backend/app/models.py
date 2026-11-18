@@ -49,6 +49,10 @@ class Clip(SQLModel, table=True):
     source_video_id: int = Field(foreign_key="sourcevideo.id", index=True)
     start_s: float
     end_s: float
+    # edges the app delivered (AI + sentence snapping), kept when the editor moves them in the
+    # Studio, so the prompt can show the AI how its edges were corrected (None = older clip)
+    ai_start_s: float | None = None
+    ai_end_s: float | None = None
     title: str = ""
     description: str = ""
     hashtags: list[str] = Field(default_factory=list, sa_column=Column(JSON))

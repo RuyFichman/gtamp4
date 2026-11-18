@@ -181,6 +181,7 @@ def test_process_video_snaps_edges_and_reuses_words_for_captions(
         assert seen["windows"] == [(7.0, 33.0, "pt")]  # one Whisper pass, with margin
         assert (clip.start_s, clip.end_s) == (8.8, pytest.approx(29.85))  # "Olha" … "fim."
         assert clip.caption_range == [7.0, 33.0]  # cached for the caption and the Studio
+        assert (clip.ai_start_s, clip.ai_end_s) == (clip.start_s, clip.end_s)  # delivered
         args, kw = seen["render"]  # type: ignore[misc]
         assert args[2:4] == (8.8, pytest.approx(29.85))
         assert "OLHA" in kw["ass"]
@@ -273,3 +274,55 @@ def test_reject_with_reason_and_clear_it_on_return(client: TestClient, engine: E
     with Session(engine) as s:
         clip = s.get(Clip, 4)
         assert clip is not None and clip.reject_reason is None
+
+
+def test_approved_clip_shows_how_the_editor_moved_its_edges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as s:
+        v = SourceVideo(
+            youtube_id="v",
+            url="u",
+            title="Mapa",
+            transcript=[
+                {"start": 0, "end": 4, "text": "bom, então"},
+                {"start": 4, "end": 20, "text": "vazou o mapa inteiro"},
+                {"start": 20, "end": 26, "text": "e outra coisa que eu queria falar"},
+            ],
+        )
+        s.add(v)
+        s.commit()
+        vid = v.id or 0
+        s.add_all(
+            [
+                # editor trimmed the filler at the start and the new topic at the end
+                Clip(source_video_id=vid, start_s=4, end_s=20, ai_start_s=0, ai_end_s=26,
+                     potential=80, status=ClipStatus.APPROVED),
+                # untouched (tiny move is noise) and an old clip without the record
+                Clip(source_video_id=vid, start_s=4.2, end_s=20, ai_start_s=4, ai_end_s=20,
+                     potential=70, status=ClipStatus.POSTED),
+                Clip(source_video_id=vid, start_s=4, end_s=20, potential=60,
+                     status=ClipStatus.APPROVED),
+            ]
+        )  # fmt: skip
+        s.commit()
+        text = feedback.editor_examples(s)
+
+    first = text.splitlines()[1]
+    assert first.startswith("- APROVADO APÓS AJUSTE DO EDITOR | nota que a IA deu: 80")
+    assert 'começou 4 s cedo demais; o editor tirou do início. Trecho: "bom, então"' in text
+    assert (
+        "terminou 6 s depois do ponto certo; o editor tirou do fim. "
+        'Trecho: "e outra coisa que eu queria falar"'
+    ) in text
+    assert text.count("APÓS AJUSTE") == 1 and text.count("ajuste do editor:") == 2
+    assert "Ajustes do editor" not in text  # 2 clips with the record: below TREND_MIN_CLIPS
+
+    monkeypatch.setattr(feedback, "TREND_MIN_CLIPS", 2)
+    with Session(engine) as s:
+        assert feedback.adjustment_trend(s) == (
+            "Ajustes do editor nos 2 cortes aprovados: atrasou o começo em 1 (em média 4 s), "
+            "encurtou o fim em 1 (em média 6 s)."
+        )

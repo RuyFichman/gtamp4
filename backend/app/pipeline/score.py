@@ -49,6 +49,8 @@ Sinais na transcrição:
 - Linhas "=== Capítulo ..." marcam os capítulos do vídeo; evite cortes que atravessem capítulos.
 - "Decisões do editor", quando aparecem, são cortes que o editor humano aprovou ou recusou (com o
   motivo). Use para entender o gosto dele e calibrar a nota; não copie os assuntos.
+  "Ajuste do editor" mostra onde você errou o começo ou o fim de um corte que ele aprovou e o
+  texto que ele tirou ou incluiu: corrija esse padrão nos cortes novos.
 
 Regras para cada corte:
 - Entre {min_s:.0f} e {max_s:.0f} segundos; comece e termine em frases completas.

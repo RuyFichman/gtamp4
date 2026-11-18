@@ -26,6 +26,8 @@ REJECT_REASONS: dict[str, tuple[str, str]] = {
 NOT_THE_CHANNEL = ("cut_mid",)
 
 EXAMPLES_PER_SIDE = 4
+EDGE_TOLERANCE_S = 0.5  # smaller moves are noise, not a correction
+TREND_MIN_CLIPS = 3
 EXCERPT_HEAD = 220
 EXCERPT_TAIL = 120
 
@@ -43,6 +45,52 @@ def excerpt(video: SourceVideo, start: float, end: float) -> str:
     return f"{words[:EXCERPT_HEAD].rstrip()} … {words[-EXCERPT_TAIL:].lstrip()}"
 
 
+def edge_moves(clip: Clip) -> tuple[float, float] | None:
+    """(start moved, end moved) in seconds from the edges the app delivered; positive = later.
+    None when the clip predates the record or the editor left both edges alone."""
+    if clip.ai_start_s is None or clip.ai_end_s is None:
+        return None
+    moves = (clip.start_s - clip.ai_start_s, clip.end_s - clip.ai_end_s)
+    if all(abs(m) < EDGE_TOLERANCE_S for m in moves):
+        return None
+    return moves
+
+
+def _quoted(video: SourceVideo, start: float, end: float) -> str:
+    words = excerpt(video, start, end)
+    return f' Trecho: "{words}"' if words else ""
+
+
+def adjustment_lines(clip: Clip, video: SourceVideo) -> list[str]:
+    """What the editor changed on the edges, with the words that went out or came in."""
+    moves = edge_moves(clip)
+    if moves is None or clip.ai_start_s is None or clip.ai_end_s is None:
+        return []
+    start_move, end_move = moves
+    out = []
+    if start_move >= EDGE_TOLERANCE_S:
+        out.append(
+            f"começou {start_move:.0f} s cedo demais; o editor tirou do início."
+            + _quoted(video, clip.ai_start_s, clip.start_s)
+        )
+    elif start_move <= -EDGE_TOLERANCE_S:
+        out.append(
+            f"começou {-start_move:.0f} s tarde demais; o editor incluiu antes."
+            + _quoted(video, clip.start_s, clip.ai_start_s)
+        )
+    if end_move <= -EDGE_TOLERANCE_S:
+        out.append(
+            f"terminou {-end_move:.0f} s depois do ponto certo; o editor tirou do fim."
+            + _quoted(video, clip.end_s, clip.ai_end_s)
+        )
+    elif end_move >= EDGE_TOLERANCE_S:
+        out.append(
+            f"terminou {end_move:.0f} s cedo demais; o editor incluiu depois."
+            + _quoted(video, clip.ai_end_s, clip.end_s)
+        )
+    return [f"  ajuste do editor: a IA {text}" for text in out]
+
+
 def _line(clip: Clip, video: SourceVideo) -> str:
     if clip.status == ClipStatus.REJECTED:
         verdict = "RECUSADO"
@@ -51,11 +99,16 @@ def _line(clip: Clip, video: SourceVideo) -> str:
             verdict += f" ({label.lower()}: {meaning})"
     else:
         verdict = "APROVADO E POSTADO" if clip.status == ClipStatus.POSTED else "APROVADO"
-    return (
+        if edge_moves(clip):
+            verdict += " APÓS AJUSTE DO EDITOR"
+    lines = [
         f"- {verdict} | nota que a IA deu: {clip.potential} | {clip.end_s - clip.start_s:.0f} s"
-        f' | vídeo: "{video.title}"\n'
-        f'  trecho: "{excerpt(video, clip.start_s, clip.end_s)}"'
-    )
+        f' | vídeo: "{video.title}"',
+        f'  trecho: "{excerpt(video, clip.start_s, clip.end_s)}"',
+    ]
+    if clip.status != ClipStatus.REJECTED:
+        lines += adjustment_lines(clip, video)
+    return "\n".join(lines)
 
 
 def _recent(
@@ -70,7 +123,41 @@ def _recent(
         query = query.where(Clip.source_video_id != exclude_video_id)
     # rejections with a reason teach more than bare ones; then the most recent
     order = [col(Clip.reject_reason).is_(None), col(Clip.id).desc()]
-    return list(session.exec(query.order_by(*order).limit(limit)).all())
+    rows = list(session.exec(query.order_by(*order).limit(limit * 5)).all())
+    # approved clips whose edges the editor corrected teach more than untouched ones
+    rows.sort(key=lambda row: edge_moves(row[0]) is None)  # stable: keeps the order above
+    return rows[:limit]
+
+
+def adjustment_trend(session: Session) -> str:
+    """How often the editor moves each edge of approved clips ("" with too little data)."""
+    clips = session.exec(
+        select(Clip).where(
+            col(Clip.status).in_([ClipStatus.APPROVED, ClipStatus.POSTED]),
+            col(Clip.ai_start_s).is_not(None),
+            col(Clip.ai_end_s).is_not(None),
+        )
+    ).all()
+    if len(clips) < TREND_MIN_CLIPS:
+        return ""
+    labels = {
+        (0, 1): "atrasou o começo",
+        (0, -1): "adiantou o começo",
+        (1, -1): "encurtou o fim",
+        (1, 1): "esticou o fim",
+    }
+    moved: dict[tuple[int, int], list[float]] = defaultdict(list)
+    for clip in clips:
+        for side, move in enumerate(edge_moves(clip) or ()):
+            if abs(move) >= EDGE_TOLERANCE_S:
+                moved[(side, 1 if move > 0 else -1)].append(abs(move))
+    if not moved:
+        return f"Nos {len(clips)} cortes aprovados o editor não mexeu no começo nem no fim."
+    parts = [
+        f"{labels[key]} em {len(v)} (em média {sum(v) / len(v):.0f} s)"
+        for key, v in sorted(moved.items(), key=lambda kv: -len(kv[1]))
+    ]
+    return f"Ajustes do editor nos {len(clips)} cortes aprovados: " + ", ".join(parts) + "."
 
 
 def reason_counts(session: Session) -> Counter[str]:
@@ -97,6 +184,9 @@ def editor_examples(
     if counts:
         common = ", ".join(f"{REJECT_REASONS[k][0].lower()} ({n})" for k, n in counts.most_common())
         lines.append(f"Motivos de recusa mais comuns até agora: {common}.")
+    trend = adjustment_trend(session)
+    if trend:
+        lines.append(trend)
     return "\n".join(lines)
 
 
