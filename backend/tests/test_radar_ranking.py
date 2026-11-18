@@ -126,8 +126,9 @@ def test_channel_history_counts_decisions_per_channel(session: Session) -> None:
     add_clips(session, "Davy Jones GTA 6", ClipStatus.APPROVED, ClipStatus.POSTED,
               ClipStatus.REJECTED, ClipStatus.PENDING_REVIEW)  # fmt: skip
     add_clips(session, "Project Vice  ", ClipStatus.REJECTED, ClipStatus.REJECTED)
-    # "cortou no meio" is the cut's fault, not the channel's
+    # "cortou no meio" / "final ruim" are the cut's fault, not the channel's
     add_clips(session, "project vice", ClipStatus.REJECTED, reason="cut_mid")
+    add_clips(session, "project vice", ClipStatus.REJECTED, reason="bad_ending")
     history = feedback.channel_history(session)
     assert history.of("davy jones gta 6") == ChannelRecord(approved=2, rejected=1)
     assert history.of("Project  Vice") == ChannelRecord(approved=0, rejected=2)

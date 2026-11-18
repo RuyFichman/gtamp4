@@ -10,11 +10,17 @@ from sqlmodel import Session, col, func, or_, select
 from app.models import Clip, ClipStatus, SourceVideo
 from app.pipeline.ranking import ChannelHistory, ChannelRecord, channel_key
 
-RejectReason = Literal["cut_mid", "no_context", "weak", "repeated", "off_topic", "bad_image"]
+RejectReason = Literal[
+    "cut_mid", "bad_ending", "no_context", "weak", "repeated", "off_topic", "bad_image"
+]
 
 # key -> (button label in the UI, what it means, told to the AI)
 REJECT_REASONS: dict[str, tuple[str, str]] = {
     "cut_mid": ("Cortou no meio", "começa ou termina no meio de uma frase ou ideia"),
+    "bad_ending": (
+        "Final ruim",
+        "o final não fecha: acaba sem conclusão ou começa um assunto novo que fica cortado",
+    ),
     "no_context": ("Sem contexto", "não se entende sem ver o resto do vídeo"),
     "weak": ("Fraco / chato", "o trecho não tem nada que prenda a atenção"),
     "repeated": ("Assunto repetido", "assunto que já virou corte antes"),
@@ -23,7 +29,7 @@ REJECT_REASONS: dict[str, tuple[str, str]] = {
 }
 
 # rejections that say nothing about the source channel: the cut was wrong, not the video
-NOT_THE_CHANNEL = ("cut_mid",)
+NOT_THE_CHANNEL = ("cut_mid", "bad_ending")
 
 EXAMPLES_PER_SIDE = 4
 EDGE_TOLERANCE_S = 0.5  # smaller moves are noise, not a correction

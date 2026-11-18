@@ -146,7 +146,7 @@ Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 **Ordem da fila** (`pipeline/ranking.py`): `views por hora ÷ √inscritos × peso do canal`.
 - **Views por hora:** views ÷ horas desde a publicação, medidas quando o Radar achou o vídeo. A idade é aproximada ("há 9 horas", via `approximate_date` do yt-dlp), com mínimo de 1 h; sem data, conta como 48 h.
 - **Inscritos:** abaixo de 10 mil, contam como 10 mil; se o canal esconde o número, contam como 100 mil. A raiz fica entre "velocidade pura" (canal grande sempre ganha) e "views por inscrito" (qualquer canal minúsculo ganharia).
-- **Peso do canal:** aprovados (inclui postados) ÷ decididos daquele canal, suavizado com 5 decisões "médias" e comparado à taxa geral, ao quadrado, limitado a 0,25×–3×. Canal sem histórico vale 1×. Recusa por "Cortou no meio" não conta contra o canal (o erro foi do corte). O canal é casado pelo nome (`ranking.channel_key`: sem diferença de maiúsculas/espaços), porque `SourceVideo` não guarda o id do canal.
+- **Peso do canal:** aprovados (inclui postados) ÷ decididos daquele canal, suavizado com 5 decisões "médias" e comparado à taxa geral, ao quadrado, limitado a 0,25×–3×. Canal sem histórico vale 1×. Recusa por "Cortou no meio" ou "Final ruim" não conta contra o canal (o erro foi do corte). O canal é casado pelo nome (`ranking.channel_key`: sem diferença de maiúsculas/espaços), porque `SourceVideo` não guarda o id do canal.
 - `RadarCandidate.status`: `rejected` | `waiting` | `sent`. "Cortar mesmo assim" na UI ignora triagem e limite.
 
 Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
