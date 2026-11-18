@@ -8,6 +8,7 @@ from typing import Any
 
 import yt_dlp
 
+from app.config import get_settings
 from app.pipeline.types import Chapter, HeatPoint
 
 YOUTUBE_ID = re.compile(r"(?:v=|youtu\.be/|shorts/|live/|embed/)([A-Za-z0-9_-]{11})")
@@ -18,6 +19,25 @@ BASE_OPTS: dict[str, Any] = {
     "noprogress": True,
     "js_runtimes": {"node": {}},
 }
+
+
+def parse_cookies_browser(value: str) -> tuple[str, str | None] | None:
+    """'firefox' or 'firefox:profile' (from YTDLP_COOKIES_FROM_BROWSER) -> (browser, profile)."""
+    value = value.strip()
+    if not value:
+        return None
+    browser, _, profile = value.partition(":")
+    return browser.strip().lower(), (profile.strip() or None)
+
+
+def login_opts() -> dict[str, Any]:
+    """BASE_OPTS plus the logged-in browser's cookies, when configured (age-restricted videos).
+    Only downloads use it; Radar listings stay anonymous to spare the account."""
+    parsed = parse_cookies_browser(get_settings().ytdlp_cookies_from_browser)
+    if parsed is None:
+        return dict(BASE_OPTS)
+    browser, profile = parsed
+    return {**BASE_OPTS, "cookiesfrombrowser": (browser, profile, None, None)}
 
 
 def parse_youtube_id(url: str) -> str | None:
@@ -99,7 +119,7 @@ def _pick_subtitle_url(info: dict[str, Any], lang: str | None) -> str | None:
 
 
 def fetch_info(url: str) -> VideoInfo:
-    with yt_dlp.YoutubeDL(BASE_OPTS) as ydl:
+    with yt_dlp.YoutubeDL(login_opts()) as ydl:
         info = ydl.extract_info(url, download=False)
         lang = _original_language(info)
         sub_url = _pick_subtitle_url(info, lang)
@@ -123,7 +143,7 @@ def download_video(url: str, dest_dir: Path, youtube_id: str) -> Path:
     if target.exists() and target.stat().st_size > 0:
         return target
     opts = {
-        **BASE_OPTS,
+        **login_opts(),
         "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b",
         "merge_output_format": "mp4",
         "outtmpl": str(dest_dir / "%(id)s.%(ext)s"),
@@ -136,6 +156,6 @@ def download_video(url: str, dest_dir: Path, youtube_id: str) -> Path:
 
 
 def fetch_views(url: str) -> int | None:
-    with yt_dlp.YoutubeDL(BASE_OPTS) as ydl:
+    with yt_dlp.YoutubeDL(login_opts()) as ydl:
         info = ydl.extract_info(url, download=False)
     return info.get("view_count")

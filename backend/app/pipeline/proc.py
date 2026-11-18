@@ -28,7 +28,16 @@ _HINTS = [
     ),
     ("video is unavailable", "Vídeo indisponível: foi removido, bloqueado ou ficou privado."),
     ("private video", "Vídeo privado: não dá para baixar."),
-    ("sign in to confirm your age", "Vídeo com restrição de idade: o YouTube exige login."),
+    (
+        "sign in to confirm your age",
+        "Vídeo com restrição de idade: o YouTube exige login. Entre no YouTube pelo Firefox, "
+        "ponha YTDLP_COOKIES_FROM_BROWSER=firefox no .env e reinicie o backend. Se já está "
+        "assim, abra o Firefox e confira se o login no YouTube continua ativo.",
+    ),
+    (
+        "could not find firefox cookies",
+        "Não achei os cookies do Firefox: instale o Firefox e entre no YouTube por ele.",
+    ),
     ("members-only", "Vídeo só para membros do canal: não dá para baixar."),
     ("premieres in", "Vídeo ainda não estreou. Tente depois da estreia."),
 ]

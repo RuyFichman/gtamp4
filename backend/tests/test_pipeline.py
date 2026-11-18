@@ -104,3 +104,25 @@ def test_framing_filter_and_suggestion() -> None:
     left = suggest(1920, 1080, (608, 1080, 0, 0))
     assert left is not None and left.pan_x == -1.0
     assert suggest(1920, 1080, (1920, 1080, 0, 0)) is None  # no bars
+
+
+def test_parse_cookies_browser() -> None:
+    from app.pipeline.download import parse_cookies_browser
+
+    assert parse_cookies_browser("") is None
+    assert parse_cookies_browser("  ") is None
+    assert parse_cookies_browser("Firefox") == ("firefox", None)
+    assert parse_cookies_browser("firefox:gta") == ("firefox", "gta")
+
+
+def test_login_opts_adds_cookies_only_when_configured(monkeypatch) -> None:
+    from app.config import get_settings
+    from app.pipeline import download
+
+    monkeypatch.setenv("YTDLP_COOKIES_FROM_BROWSER", "")
+    get_settings.cache_clear()
+    assert "cookiesfrombrowser" not in download.login_opts()
+    monkeypatch.setenv("YTDLP_COOKIES_FROM_BROWSER", "firefox")
+    get_settings.cache_clear()
+    assert download.login_opts()["cookiesfrombrowser"] == ("firefox", None, None, None)
+    get_settings.cache_clear()

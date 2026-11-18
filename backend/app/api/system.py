@@ -20,4 +20,5 @@ def health(session: Annotated[Session, Depends(get_session)]) -> dict[str, objec
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "encoder": pick_encoder(get_app_config(session).video_encoder),
         "ai": bool(settings.anthropic_api_key),
+        "youtube_login": bool(settings.ytdlp_cookies_from_browser.strip()),
     }

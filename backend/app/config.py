@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     radar_interval_minutes: int = 30
     radar_daily_limit: int = 10
     video_encoder: str = "auto"  # auto | h264_amf | libx264
+    # "firefox" or "firefox:profile": yt-dlp logs in with that browser's YouTube cookies
+    ytdlp_cookies_from_browser: str = ""
 
     @property
     def db_path(self) -> Path:
