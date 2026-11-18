@@ -7,6 +7,7 @@ import { FramingPreview } from './FramingPreview'
 import { ModalShell as Shell } from './ModalShell'
 import { TimeField } from './TimeField'
 import { TranscriptPicker } from './TranscriptPicker'
+import { TrimTimeline } from './TrimTimeline'
 
 type Props = { clipId: number; onClose: () => void; onSaved: () => void }
 
@@ -39,6 +40,15 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
   const [autoMessage, setAutoMessage] = useState<string | null>(null)
   const player = useRef<HTMLVideoElement>(null)
   const stopAt = useRef<number | null>(null)
+
+  const currentTime = useCallback(() => player.current?.currentTime ?? 0, [])
+  const scrub = useCallback((t: number) => {
+    const v = player.current
+    if (!v) return
+    stopAt.current = null
+    if (!v.paused) v.pause()
+    v.currentTime = t
+  }, [])
 
   const fill = useCallback((s: Studio) => {
     setStudio(s)
@@ -217,6 +227,19 @@ export function StudioModal({ clipId, onClose, onSaved }: Props) {
           )}
 
           <div className="space-y-2 rounded border border-white/10 bg-white/5 p-3">
+            <TrimTimeline
+              start={form.start}
+              end={form.end}
+              duration={studio.duration_s}
+              segments={studio.transcript}
+              videoUrl={studio.source_video_url}
+              currentTime={currentTime}
+              minS={studio.min_s}
+              maxS={studio.max_s}
+              onChange={(start, end) => set({ start, end })}
+              onSeek={(t) => seek(t)}
+              onScrub={scrub}
+            />
             <TimeField
               label="Início"
               value={form.start}
