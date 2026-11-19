@@ -16,6 +16,21 @@ MAX_DURATION_S = 3 * 3600  # hours-long streams are too slow to process
 
 _CHANNEL_ID = re.compile(r"^UC[\w-]{22}$")
 
+# Titles that say outright nobody talks over the game (en / pt / es). Only unambiguous markers:
+# "walkthrough", "gameplay", "4K 60FPS" or "longplay" alone are left to the AI triage, since
+# commented videos use them too. Singular "no comment" is left out: news titles use it
+# ("Rockstar has no comment").
+NO_COMMENTARY = re.compile(
+    r"\bno[\s_-]*commentary\b|\bwithout\s+commentary\b|\bno\s+talking\b"
+    r"|\bsem\s+(?:coment(?:[aá]rios?|ar)|narra[cç][aã]o)\b"
+    r"|\bsin\s+(?:comentarios?|comentar|narraci[oó]n)\b"
+    r"|\ball\s+(?:the\s+)?(?:cut[\s-]?scenes|cinematics)\b"
+    r"|\btodas\s+(?:as|las)\s+(?:cut[\s-]?scenes|cinem[aá]ticas)\b"
+    r"|\b(?:full|game)\s+movie\b|\bfilme\s+completo\b|\bpel[ií]cula\s+completa\b",
+    re.IGNORECASE,
+)
+NO_COMMENTARY_REASON = "Gameplay sem narração (título)"
+
 # flat listings only say "há 9 horas"; this makes yt-dlp turn it into an (approximate) timestamp
 LIST_OPTS: dict[str, Any] = {
     **BASE_OPTS,
@@ -104,6 +119,11 @@ def channel_subscribers(channel_id: str) -> int | None:
     return int(subs) if isinstance(subs, int | float) else None
 
 
+def says_no_commentary(title: str) -> bool:
+    """The title itself says it is gameplay without anyone talking ("No Commentary"...)."""
+    return NO_COMMENTARY.search(title) is not None
+
+
 def prefilter(video: Found) -> str | None:
     """Cheap checks before spending AI. Returns the rejection reason, or None to keep."""
     if video.duration_s is None:
@@ -112,4 +132,6 @@ def prefilter(video: Found) -> str | None:
         return "Curto demais (já é um short)"
     if video.duration_s > MAX_DURATION_S:
         return "Longo demais (live de horas)"
+    if says_no_commentary(video.title):
+        return NO_COMMENTARY_REASON
     return None

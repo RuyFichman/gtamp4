@@ -1,4 +1,5 @@
-"""Loudness per second of the audio track, used as the 'fala mais agitada' signal."""
+"""Loudness per second of the whole audio track: voice AND game (gunfire, engines, music).
+The AI gets it as "energia"; on gameplay it only means a reaction when someone talks there."""
 
 import subprocess
 from pathlib import Path

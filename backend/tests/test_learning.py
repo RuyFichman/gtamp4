@@ -59,16 +59,26 @@ def test_transcript_gets_replay_column_and_chapter_lines() -> None:
     assert text[0] == "=== Capítulo (00:00): Intro ==="
     assert "energia=4 replay=0 | oi" in text[1]
     assert "replay=9 | olha isso" in text[2]
-    assert text[3] == "=== Capítulo (00:39): Mapa ==="
+    assert text[3] == "[... 36 s sem fala ...]"  # nobody talks from 4 s to 40 s
+    assert text[4] == "=== Capítulo (00:39): Mapa ==="
     # no graph: no column, so the prompt's "sem a coluna" rule applies
     assert "replay" not in score.format_transcript(segments, energy)
+
+
+def narration(start: float, end: float) -> list[Segment]:
+    """Someone talking non-stop: one 5-word line every 2 s (2.5 words/s)."""
+    return [
+        Segment(start=t, end=t + 2, text="olha só que coisa louca")
+        for t in np.arange(start, end - 1, 2.0).tolist()
+    ]
 
 
 def test_heuristic_follows_replay_when_loudness_is_flat() -> None:
     energy = np.full(200, 0.5)
     replay = np.zeros(200)
     replay[120:160] = 1.0
-    ideas = score.plan_heuristic("t", [], energy, 200, score.ClipLimits(12, 40, 1), replay)
+    talk = narration(0, 200)
+    ideas = score.plan_heuristic("t", talk, energy, 200, score.ClipLimits(12, 40, 1), replay)
     assert ideas[0].start_s == 120
     assert "mais repetido" in ideas[0].reason
 
@@ -149,11 +159,12 @@ def test_process_video_snaps_edges_and_reuses_words_for_captions(
     seen: dict[str, object] = {}
     idea = score.ClipIdea(start_s=10.0, end_s=30.0, potential=80, reason="r", title="t",
                           description="d", hashtags=[])  # fmt: skip
-    words = WORDS + [w(29.0, 29.6, "fim."), w(30.4, 31.0, "Depois")]
+    talk = [w(t, t + 0.4, "palavra") for t in np.arange(12.0, 28.1, 0.5).tolist()]
+    words = WORDS + talk + [w(29.0, 29.6, "fim."), w(30.4, 31.0, "Depois")]
 
-    def plan(**kw: object) -> list[score.ClipIdea]:
+    def plan(**kw: object) -> score.ClipPlan:
         seen.update(kw)
-        return [idea]
+        return score.ClipPlan(video_language="pt", has_commentary=True, clips=[idea])
 
     def transcribe(_model: object, _src: Path, lo: float, hi: float, lang: str | None) -> list:
         seen.setdefault("windows", []).append((lo, hi, lang))  # type: ignore[union-attr]
@@ -164,10 +175,10 @@ def test_process_video_snaps_edges_and_reuses_words_for_captions(
 
     monkeypatch.setattr(download, "fetch_info", lambda _url: info)
     monkeypatch.setattr(download, "download_video", lambda *_a: src)
-    monkeypatch.setattr(transcribe_mod, "whisper_transcribe", lambda *_a: ([], "pt"))
+    monkeypatch.setattr(transcribe_mod, "whisper_transcribe", lambda *_a: (narration(0, 100), "pt"))
     monkeypatch.setattr(energy, "loudness_per_second", lambda _p: np.full(100, 0.5))
     monkeypatch.setattr(score, "plan_with_claude", plan)
-    monkeypatch.setattr(score, "plan_heuristic", lambda *a: plan(replay=a[-1]))
+    monkeypatch.setattr(score, "plan_heuristic", lambda *a: plan(replay=a[-1]).clips)
     monkeypatch.setattr(captions, "load_whisper", lambda _size: object())
     monkeypatch.setattr(captions, "transcribe_words", transcribe)
     monkeypatch.setattr(cut, "render_clip", render)

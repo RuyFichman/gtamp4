@@ -9,15 +9,46 @@ from app.config import get_settings
 from app.jobs import queue
 from app.jobs.worker import handler
 from app.models import Clip, FrameTemplate, Job, JobStatus, SourceVideo, utcnow
-from app.pipeline import boundaries, captions, cut, download, energy, score, transcribe
-from app.pipeline.types import Chapter, HeatPoint, Word
+from app.pipeline import boundaries, captions, cut, download, energy, score, speech, transcribe
+from app.pipeline.types import Chapter, HeatPoint, Segment, Word
 from app.store import AppConfig, get_app_config, get_caption_style
 
 PROCESS_VIDEO = "process_video"
 
+# final job messages when a video yields no clips because nobody comments over the game
+NO_SPEECH = "Vídeo quase sem narração (gameplay puro): nenhum corte gerado"
+NO_COMMENTATOR = (
+    "A IA não achou ninguém comentando (só o jogo fala: gameplay puro ou cutscenes): "
+    "nenhum corte gerado"
+)
+
 
 def _step(session: Session, job: Job, progress: float, message: str) -> None:
     queue.update(session, job, progress=progress, message=message)
+
+
+def _keep_transcript(session: Session, video: SourceVideo, segments: list[Segment]) -> str | None:
+    """Saves the transcript. Returns the final job message when the video is barely spoken
+    (stop: zero clips), None to go on."""
+    video.transcript = [dict(s) for s in segments]
+    session.add(video)
+    session.commit()
+    talk = speech.video_speech(segments, video.duration_s)
+    if talk.narrated:
+        return None
+    return f"{NO_SPEECH} · fala em {talk.coverage:.0%} do vídeo, {talk.wpm:.0f} palavras/min"
+
+
+def _count(n: int, one: str, many: str) -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def _clips_message(made: int, skipped: int) -> str | None:
+    """Final job message when clip windows were dropped for lack of narration."""
+    if not skipped:
+        return None
+    done = _count(made, "corte gerado", "cortes gerados") if made else "Nenhum corte gerado"
+    return f"{done} · {_count(skipped, 'trecho descartado', 'trechos descartados')}: pouca narração"
 
 
 def _default_frame(session: Session) -> Path | None:
@@ -58,7 +89,10 @@ class _Captioner:
 
 
 @handler(PROCESS_VIDEO)
-def process_video(session: Session, job: Job) -> None:
+def process_video(session: Session, job: Job) -> str | None:
+    """Link -> clips. Returns the final job message when it is worth more than "Concluído"
+    (no clips, and why). Three guards keep pure gameplay out: the video's speech (before the
+    download when subtitles exist), the AI's has_commentary, and each clip's narration."""
     settings = get_settings()
     cfg = get_app_config(session)
     limits = score.ClipLimits(cfg.min_clip_s, cfg.max_clip_s, cfg.max_clips)
@@ -87,22 +121,28 @@ def process_video(session: Session, job: Job) -> None:
     session.commit()
     session.refresh(video)
 
+    # transcript first when it is free (already stored, or YouTube subtitles): a video nobody
+    # talks in stops here, before the download
+    segments: list[Segment] | None = None
+    if video.transcript:
+        segments = speech.clean_segments([Segment(**s) for s in video.transcript])
+    elif info.subtitle_json3:
+        segments = transcribe.parse_json3(info.subtitle_json3)
+    if segments is not None and (stop := _keep_transcript(session, video, segments)):
+        return stop
+
     _step(session, job, 0.1, "Baixando vídeo")
     path = download.download_video(video.url, settings.videos_dir, video.youtube_id)
     video.file_path = str(path)
+    session.add(video)
+    session.commit()
 
-    _step(session, job, 0.35, "Transcrevendo")
-    if video.transcript:
-        segments = video.transcript
-    elif info.subtitle_json3:
-        segments = transcribe.parse_json3(info.subtitle_json3)
-    else:
+    if segments is None:
         _step(session, job, 0.35, "Transcrevendo com Whisper (sem legenda no YouTube)")
         segments, lang = transcribe.whisper_transcribe(path, info.language, cfg.whisper_model)
         video.language = video.language or lang
-    video.transcript = list(segments)
-    session.add(video)
-    session.commit()
+        if stop := _keep_transcript(session, video, segments):
+            return stop
 
     _step(session, job, 0.5, "Medindo energia do áudio")
     loud = energy.loudness_per_second(path)
@@ -112,7 +152,7 @@ def process_video(session: Session, job: Job) -> None:
 
     if settings.anthropic_api_key:
         _step(session, job, 0.55, "Analisando com IA")
-        ideas = score.plan_with_claude(
+        plan = score.plan_with_claude(
             title=video.title,
             channel=video.channel,
             language=video.language,
@@ -127,16 +167,19 @@ def process_video(session: Session, job: Job) -> None:
             chapters=chapters,
             examples=feedback.editor_examples(session, exclude_video_id=video.id),
         )
+        if not plan.has_commentary:
+            return NO_COMMENTATOR
+        ideas = plan.clips
     else:
         ideas = score.plan_heuristic(video.title, segments, loud, video.duration_s, limits, replay)
 
     if not ideas:
-        _step(session, job, 1.0, "Nenhum trecho bom encontrado")
-        return
+        return "Nenhum trecho bom encontrado"
 
     frame = _default_frame(session)
     captioner = _Captioner(session, cfg, path, video.language)
     end_limit = video.duration_s or float("inf")
+    made = skipped = 0
     for i, idea in enumerate(ideas, 1):
         progress = 0.6 + 0.4 * (i - 1) / len(ideas)
         # one Whisper pass per clip, with margin: snaps the edges to the nearest sentence
@@ -148,6 +191,9 @@ def process_video(session: Session, job: Job) -> None:
         start, end = boundaries.snap_clip(
             words, idea.start_s, idea.end_s, limits.min_s, limits.max_s, (lo, hi)
         )
+        if not speech.clip_speech(words, start, end).narrated:
+            skipped += 1  # mostly game audio or silence: never rendered, never a Clip
+            continue
         dst = settings.clips_dir / f"{video.youtube_id}_{start:.0f}-{end:.0f}.mp4"
         # reprocessing the same video must not duplicate a clip (keeps its status)
         clip = session.exec(select(Clip).where(Clip.file_path == str(dst))).first() or Clip(
@@ -170,6 +216,8 @@ def process_video(session: Session, job: Job) -> None:
         clip.file_path = str(dst)
         session.add(clip)
         session.commit()
+        made += 1
+    return _clips_message(made, skipped)
 
 
 RENDER_CLIP = "render_clip"

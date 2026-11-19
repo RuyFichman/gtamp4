@@ -7,6 +7,11 @@ Funcionalidades adiadas. Ao começar uma, mova para o roadmap do `AGENTS.md` e a
 - O "Automático" do enquadramento (`pipeline/framing.py`) usa `cropdetect`, que só acha barras **pretas**. Vídeos verticais com laterais desfocadas ainda exigem zoom manual.
 - Ideia: medir a nitidez (variância do Laplaciano / bordas) por coluna com numpy para achar a faixa nítida, e reaproveitar `framing.suggest()`.
 
+## IA: dar olhos à IA
+
+- Hoje a IA de cortes só lê a transcrição. Ela não vê a tela: não sabe se "olha isso" mostra algo bom, não separa por imagem um streamer de uma cutscene (só pelo texto, via `has_commentary`), e o motivo de recusa nº 1 é "Sem contexto".
+- Ideia: mandar ao Claude alguns quadros do vídeo (ffmpeg, um por trecho candidato, baixa resolução) junto com a transcrição, ou detectar cenas (corte de câmera, webcam do streamer no canto, HUD do jogo) para marcar na transcrição. Cuidado com custo (imagens por vídeo) e com o tempo de CPU.
+
 ## Fila: pegar job de forma atômica
 
 - `jobs/queue.claim_next` faz `SELECT` e depois `UPDATE`; com dois processos no mesmo banco, os dois pegam o mesmo job (aconteceu com um backend órfão: um `radar_scan` rodou duas vezes e mandou vídeos além do limite diário).

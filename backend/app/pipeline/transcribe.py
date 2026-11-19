@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 
+from app.pipeline import speech
 from app.pipeline.proc import CommandError
 from app.pipeline.types import Segment
 
@@ -27,7 +28,8 @@ def parse_json3(data: dict[str, Any]) -> list[Segment]:
     # auto captions overlap (rolling lines): clip each end to the next start
     for cur, nxt in zip(segments, segments[1:], strict=False):
         cur["end"] = min(cur["end"], nxt["start"]) if nxt["start"] > cur["start"] else cur["end"]
-    return segments
+    # only now drop "[Music]" & co.: a line before the music still ends where the music starts
+    return speech.clean_segments(segments)
 
 
 def whisper_transcribe(
@@ -40,7 +42,8 @@ def whisper_transcribe(
     segments = [
         Segment(start=round(s.start, 2), end=round(s.end, 2), text=s.text.strip()) for s in raw
     ]
-    return segments, language or info.language
+    # Whisper writes "♪" or "[Música]" over music now and then
+    return speech.clean_segments(segments), language or info.language
 
 
 def decode_audio(video: Path, start: float | None = None, end: float | None = None) -> np.ndarray:

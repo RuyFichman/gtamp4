@@ -11,7 +11,14 @@ from app.models import Clip, ClipStatus, SourceVideo
 from app.pipeline.ranking import ChannelHistory, ChannelRecord, channel_key
 
 RejectReason = Literal[
-    "cut_mid", "bad_ending", "no_context", "weak", "repeated", "off_topic", "bad_image"
+    "cut_mid",
+    "bad_ending",
+    "no_context",
+    "weak",
+    "repeated",
+    "off_topic",
+    "no_commentary",
+    "bad_image",
 ]
 
 # key -> (button label in the UI, what it means, told to the AI)
@@ -25,6 +32,12 @@ REJECT_REASONS: dict[str, tuple[str, str]] = {
     "weak": ("Fraco / chato", "o trecho não tem nada que prenda a atenção"),
     "repeated": ("Assunto repetido", "assunto que já virou corte antes"),
     "off_topic": ("Não é GTA 6", "não é sobre GTA 6"),
+    # counts against the channel (not in NOT_THE_CHANNEL): no-commentary uploads are the video's
+    # fault, and the Radar should learn to skip that channel
+    "no_commentary": (
+        "Sem narração",
+        "gameplay sem ninguém comentando: só som do jogo, cutscene ou silêncio",
+    ),
     "bad_image": ("Imagem ruim", "o problema é a imagem do vídeo, não a escolha do trecho"),
 }
 

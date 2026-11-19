@@ -11,7 +11,8 @@ from app.pipeline.proc import explain_error
 
 log = logging.getLogger(__name__)
 
-Handler = Callable[[Session, Job], None]
+# a handler may return the job's final message (e.g. why no clips came out); None = "Concluído"
+Handler = Callable[[Session, Job], str | None]
 HANDLERS: dict[str, Handler] = {}
 
 
@@ -32,8 +33,10 @@ def process_one(session: Session) -> bool:
     try:
         if fn is None:
             raise RuntimeError(f"Tipo de job desconhecido: {job.kind}")
-        fn(session, job)
-        queue.update(session, job, status=JobStatus.DONE, progress=1.0, message="Concluído")
+        final = fn(session, job)
+        queue.update(
+            session, job, status=JobStatus.DONE, progress=1.0, message=final or "Concluído"
+        )
     except Exception as exc:  # noqa: BLE001 - every failure must land on the job
         log.exception("job %s failed", job.id)
         queue.update(

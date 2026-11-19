@@ -59,7 +59,12 @@ export function ApprovePage({ active, onCountChange }: Props) {
   return (
     <div className="space-y-6">
       <AddVideoForm onAdded={loadJobs} />
-      <JobList jobs={jobs.filter((j) => j.status !== 'done')} onChange={loadJobs} />
+      {/* finished jobs stay while they explain something (e.g. "nenhum corte gerado"); the API
+          only returns ones that finished in the last 2 minutes */}
+      <JobList
+        jobs={jobs.filter((j) => j.status !== 'done' || j.message !== 'Concluído')}
+        onChange={loadJobs}
+      />
 
       <section>
         <h2 className="text-xl font-bold">Cortes esperando você</h2>

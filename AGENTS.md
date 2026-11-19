@@ -7,7 +7,7 @@ Leia inteiro antes de mudar qualquer coisa.
 
 **gtamp4** é uma ferramenta **local e pessoal** (não comercial, um único usuário) que:
 
-1. Encontra vídeos sobre GTA 6 no YouTube (manualmente por link ou automaticamente pelo Radar).
+1. Encontra vídeos de GTA 6 no YouTube (manualmente por link ou automaticamente pelo Radar). Com o jogo lançado, a fonte é **gameplay comentado e reações**: uma pessoa falando por cima do jogo. **Gameplay puro (sem ninguém comentando) nunca vira corte** (ver "Pipeline de um vídeo").
 2. Baixa o vídeo e a transcrição.
 3. Usa IA para escolher os melhores trechos e dar uma nota de **potencial (0–100)**.
 4. Corta cada trecho em vídeo vertical 9:16, com a **moldura** (overlay PNG) em uso, se houver.
@@ -25,10 +25,11 @@ Tudo roda na máquina do usuário. Não há deploy em nuvem, login nem multi-ten
 | Fila de jobs | Tabela `job` no SQLite + um worker em thread (sobrevive a reinícios) |
 | Agendador | **APScheduler** (só enfileira: coleta do Radar, atualização de views) |
 | Download | **yt-dlp** (vídeo, metadados, legendas) |
-| Transcrição | 1º legendas do YouTube via yt-dlp; fallback **faster-whisper** em CPU (`int8`, modelo escolhido em Ajustes, padrão `small`). O áudio vai para o Whisper já decodificado pelo ffmpeg (`transcribe.decode_audio`) |
+| Transcrição | 1º legendas do YouTube via yt-dlp; fallback **faster-whisper** em CPU (`int8`, modelo escolhido em Ajustes, padrão `small`). O áudio vai para o Whisper já decodificado pelo ffmpeg (`transcribe.decode_audio`). Marcas que não são fala (`[Music]`, `[Risos]`, `♪`) saem nas duas fontes (`pipeline/speech.py`) |
+| Narração | `pipeline/speech.py` (puro, sem I/O): cobertura de fala e palavras/min do vídeo, palavras/s e maior silêncio de uma janela, para segmentos e palavras do Whisper. Limites calibrados nos cortes aprovados, em constantes nomeadas |
 | Legenda queimada | Whisper com `word_timestamps` só no trecho do corte → `.ass` (`pipeline/captions.py`) → filtro `ass` do ffmpeg (libass) |
 | IA | **API do Claude** (SDK `anthropic`): uma chamada por vídeo com o modelo de cortes (padrão Sonnet) que escolhe trechos, dá a nota e escreve título/descrição; o modelo de triagem (padrão Haiku) filtra vídeos do Radar. Saída estruturada via `beta.messages.parse` + Pydantic. Sem chave, cai numa heurística por volume |
-| Energia da fala | ffmpeg → PCM → **numpy** (RMS por segundo, `pipeline/energy.py`), passada à IA como "energia 0-9" por linha |
+| Energia do áudio | ffmpeg → PCM → **numpy** (RMS por segundo, `pipeline/energy.py`), passada à IA como "energia 0-9" por linha. É o áudio **todo** (voz e jogo: tiros, motor, música), não só a voz |
 | Edição de vídeo | **ffmpeg** / **ffprobe** (CLI, via `pipeline/proc.run`) |
 | Frontend | **React 19 + Vite + TypeScript + Tailwind v4**, sem biblioteca de componentes; lint com **oxlint** |
 | Comunicação | REST JSON em `/api/*`; progresso de jobs por polling. Arquivos servidos em `/api/media/{clips,videos,frames}/` |
@@ -68,7 +69,7 @@ gtamp4/
 │   │   ├── api/           # um arquivo de rotas por aba + schemas.py (modelos de resposta)
 │   │   ├── jobs/          # queue, worker, handlers (process_video, render_clip), radar_jobs
 │   │   └── pipeline/      # download, transcribe, energy, score, triage, radar, ranking,
-│   │                      # boundaries, captions, cut, framing, encoder, proc, types
+│   │                      # boundaries, captions, cut, framing, encoder, proc, speech, types
 │   │                      # (não lê o banco)
 │   └── tests/
 ├── frontend/
@@ -89,7 +90,7 @@ gtamp4/
 | Aba | Função |
 |---|---|
 | **Painel** | Estatísticas (`GET /api/stats`, `app/stats.py`): fila de aprovação/postagem, taxa de aprovação, cortes por dia (14 dias, fuso da máquina), potencial médio aprovados vs. recusados, postados por conta, Radar, jobs, disco. Gráfico em SVG próprio (sem lib), cores validadas para daltonismo |
-| **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, Estúdio, baixar). "Recusar" pede o motivo (botões; "Sem motivo" também vale), que ensina a IA (ver Pipeline). Fica montada o tempo todo para o polling e o contador da aba seguirem funcionando |
+| **Aprovar** | Colar link do YouTube, ver fila de processamento, cards de corte (aprovar, recusar, Estúdio, baixar). "Recusar" pede o motivo (botões vindos de `GET /api/clips/reject-reasons`; "Sem motivo" também vale), que ensina a IA (ver Pipeline). Job pronto com mensagem própria (ex.: "nenhum corte gerado" e o porquê) continua na lista enquanto a API o devolve (2 min); com "Concluído", some. Fica montada o tempo todo para o polling e o contador da aba seguirem funcionando |
 | **Postagem** | Cortes aprovados aguardando postagem manual: baixar vídeo, copiar título/descrição/hashtags (a legenda copiada ganha "Canal original: X" entre a descrição e as hashtags, montada em `format.captionText`, não gravada no corte), escolher a conta e marcar como "postado" (com link do post, opcional). Lista dos já postados |
 | **Pré-lançamento** | Mesma tela da Postagem (`PostPage archived`) para os cortes com `Clip.archived` (o lote de curiosidades de antes do lançamento do GTA 6), mais os que ainda esperam aprovação. Ficam fora de Aprovar/Postagem e das filas do Painel, mas o status não muda: continuam como exemplos da IA e no histórico dos canais. Botão "Pré-lançamento" / "Para Postagem" no card move entre as abas |
 | **Contas** | Lista das contas de TikTok / Instagram do usuário (nome, @, plataforma, notas). Só para organização: **sem tokens, sem login, sem integração** |
@@ -114,14 +115,20 @@ Cada card de corte mostra: player, título, **views do vídeo original**, **data
 
 ## Pipeline de um vídeo
 
-1. `download`: yt-dlp baixa vídeo (máx. 1080p), metadados e legendas (manual > automática, **no idioma original**), mais o gráfico "mais repetidos" (`heatmap`) e os capítulos, quando o YouTube tem (muitos vídeos não têm: sem views suficientes, não há gráfico).
-2. `transcribe`: usa a legenda; se não houver, faster-whisper em CPU. Resultado: segmentos com timestamps.
-3. `energy` + `score`: mede o volume por segundo; Claude recebe a transcrição anotada (`energia=0-9` e, se houver, `replay=0-9` do "mais repetidos"; linhas `=== Capítulo ... ===`), os metadados e as **decisões do editor** (`feedback.editor_examples`: até 4 aprovados/postados e 4 recusados recentes de outros vídeos, com motivo, nota que a IA deu e o começo/fim do trecho, mais a contagem dos motivos). Aprovado cujo início/fim o editor mexeu no Estúdio (comparando com `ai_start_s`/`ai_end_s`, tolerância 0,5 s) vem primeiro, marcado "APÓS AJUSTE DO EDITOR", com o texto que saiu ou entrou em cada ponta, e há uma linha de tendência ("encurtou o fim em N") a partir de 3 aprovados com esse registro. Vale ajustar antes ou depois de aprovar: a comparação é feita quando o próximo vídeo é processado. Devolve trechos (start, end, potential, reason, title, description, hashtags). `sanitize()` aplica os `ClipLimits` dos Ajustes (padrão 12–75 s, até 5 cortes). Sem chave, a heurística usa metade volume, metade replay.
+**Só gameplay comentado vira corte**: um youtuber/streamer falando por cima do jogo, ou vídeo só de conversa (análise, notícia, podcast). Gameplay puro (walkthrough sem narração, edição de cutscenes, trailer, música, passeio) dá **zero** cortes. São camadas baratas, cada uma testada sozinha: transcrição limpa, guarda do vídeo, `has_commentary` da IA, guarda de cada corte (e, antes, o pré-filtro e a triagem do Radar).
+
+1. `download`: yt-dlp lê metadados e legendas (manual > automática, **no idioma original**), mais o gráfico "mais repetidos" (`heatmap`) e os capítulos, quando o YouTube tem (muitos vídeos não têm: sem views suficientes, não há gráfico). O vídeo (máx. 1080p) só é baixado depois da guarda do vídeo, quando há legenda.
+2. `transcribe`: usa a transcrição já salva ou a legenda; se não houver nenhuma, baixa o vídeo e roda o faster-whisper em CPU. Resultado: segmentos com timestamps, sem as marcas que não são fala (`speech.clean_segments`: `[Music]`, `[Música]`, `[Aplausos]`, `[Risos]`, qualquer `[...]` com letras, `(risos)`, letra de música entre `♪`). O palavrão censurado do YouTube (`[ __ ]`) fica: é fala.
+2b. **Guarda do vídeo** (`speech.video_speech`): com a transcrição salva, se a fala cobre menos de `VIDEO_MIN_COVERAGE` (25%) do vídeo ou tem menos de `VIDEO_MIN_WPM` (25) palavras/min, o job termina sem cortes ("Vídeo quase sem narração (gameplay puro): nenhum corte gerado", com os números). Com legenda, roda **antes do download**; sem legenda, depois do Whisper.
+3. `energy` + `score`: mede o volume por segundo do áudio todo (voz e jogo); Claude recebe a transcrição anotada (`energia=0-9` e, se houver, `replay=0-9` do "mais repetidos"; linhas `=== Capítulo ... ===`; linhas `[... N s sem fala ...]` onde ninguém fala por `SILENCE_MARK_S` (6 s) ou mais, inclusive no começo e no fim), os metadados e as **decisões do editor** (`feedback.editor_examples`: até 4 aprovados/postados e 4 recusados recentes de outros vídeos, com motivo, nota que a IA deu e o começo/fim do trecho, mais a contagem dos motivos). Aprovado cujo início/fim o editor mexeu no Estúdio (comparando com `ai_start_s`/`ai_end_s`, tolerância 0,5 s) vem primeiro, marcado "APÓS AJUSTE DO EDITOR", com o texto que saiu ou entrou em cada ponta, e há uma linha de tendência ("encurtou o fim em N") a partir de 3 aprovados com esse registro. Vale ajustar antes ou depois de aprovar: a comparação é feita quando o próximo vídeo é processado. O prompt explica que a transcrição mistura, sem rótulo, quem comenta com as falas do jogo (cutscene, NPC, rádio) e como separar; que `energia` alta só vale com reação de quem comenta; e que um corte não pode ter mais de `CLIP_MAX_SILENCE_S` seguidos sem fala. A IA devolve `ClipPlan`: `video_language`, depois **`has_commentary`** (uma pessoa real comenta? fala de personagem não conta), depois os trechos (start, end, potential, reason, title, description, hashtags). `has_commentary = false` ⇒ zero cortes, no `score.finalize` e de novo no job ("A IA não achou ninguém comentando ..."), o que quer que a IA tenha listado. `sanitize()` aplica os `ClipLimits` dos Ajustes (padrão 12–75 s, até 5 cortes). Sem chave, a heurística só considera janelas que passam na guarda de corte (abaixo) e usa metade volume, metade replay.
 3b. `boundaries`: para cada corte, o Whisper transcreve o trecho com 3 s de folga de cada lado (uma vez só; as palavras ficam no cache `caption_words` e a legenda reaproveita). Início e fim vão para a melhor quebra a até 2 s: fim de frase (`.` `!` `?`) vale mais que vírgula, pausa longa mais que curta, e se afastar custa. Nunca corta entre pedaços de uma palavra que o Whisper separou (`GT` + `-A6`). Se a mudança quebra os limites de duração, mantém o tempo da IA naquele lado.
+3c. **Guarda do corte** (`speech.clip_speech`, com as mesmas palavras do Whisper de 3b): menos de `CLIP_MIN_WPS` (0,6) palavras/s ou um silêncio maior que `CLIP_MAX_SILENCE_S` (12 s, contando as pontas) dentro de [início, fim] ⇒ o trecho é descartado antes do render (sem arquivo, sem `Clip`). A mensagem final do job conta: "1 corte gerado · 2 trechos descartados: pouca narração".
 4. `cut`: ffmpeg corta, reenquadra para 1080x1920 (fundo desfocado + vídeo centralizado, com o enquadramento do corte), aplica a moldura em uso se houver, queima a legenda por cima de tudo (se ligada no estilo e no corte), normaliza áudio (`loudnorm`). Arquivo: `data/clips/{youtube_id}_{start}-{end}.mp4`.
 5. Cria `Clip` com status `pending_review` só depois do arquivo renderizado (reprocessar o mesmo vídeo não duplica cortes).
 
-Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
+Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`). Um handler pode **devolver** a mensagem final do job (o worker grava no lugar de "Concluído"); é assim que "nenhum corte gerado" e o motivo chegam à aba Aprovar.
+
+**Limites de narração** (constantes em `pipeline/speech.py`): calibrados em 19/11/2026 no `data/app.db` (só leitura) com os 45 cortes aprovados e os 14 vídeos que os geraram, todos fala comentada por definição. Aprovados: 1,05 a 4,6 palavras/s (mediana 3,2), maior silêncio até 9,2 s (Whisper perde palavra gritada por cima do jogo); vídeos: cobertura 0,45 a 1,00, 44 a 231 palavras/min (os mais baixos são gameplay comentado e reação, com som do jogo entre as falas). Os limites deixam passar 100% deles com folga; barram os dois trailers oficiais da Rockstar (cobertura 0,14-0,15) e 3 cortes já recusados (0 a 0,45 palavras/s). Mudou o limite? Rode a calibração de novo e mantenha 100% dos aprovados.
 
 ## Estúdio
 
@@ -139,16 +146,16 @@ Tudo isso roda no job `process_video` (`backend/app/jobs/handlers.py`).
 - `radar_scan` (`jobs/radar_jobs.py`):
   1. roda cada `RadarQuery` ativa (`pipeline/radar.py`, yt-dlp com `extract_flat`, sem baixar);
   2. ignora vídeos já vistos (`RadarCandidate`) ou já processados (`SourceVideo`);
-  3. aplica o pré-filtro (duração 90 s a 3 h, sem live);
+  3. aplica o pré-filtro (duração 90 s a 3 h, sem live; título que diz que ninguém fala, `radar.NO_COMMENTARY`: "no commentary", "without commentary", "sem comentário(s)", "sem narração", "sin comentarios", "all cutscenes", "todas as cutscenes", "full/game movie", "filme completo", "película completa" ⇒ "Gameplay sem narração (título)"). Palavras ambíguas ("walkthrough", "longplay", "4K 60FPS") ficam para a triagem; "no comment" no singular também (manchete de notícia usa);
   4. busca os inscritos dos canais que passaram (`radar.channel_subscribers`, uma consulta rápida por canal; cache `RadarChannel` de 7 dias; busca por canal já traz o número). Falha não para o scan: fica sem inscritos e tenta no próximo;
-  5. faz a triagem por título com o modelo de triagem (`pipeline/triage.py`), que recebe o histórico do canal ("editor: X de Y cortes aprovados", de `feedback.channel_history`). Sem chave: regex "GTA 6/VI" e descarta canal com 6+ cortes avaliados e até 15% aprovados;
+  5. faz a triagem por título com o modelo de triagem (`pipeline/triage.py`), que recebe o histórico do canal ("editor: X de Y cortes aprovados", de `feedback.channel_history`). O prompt é pós-lançamento: mantém gameplay comentado, reação, primeiras impressões, "testei", descobertas/easter eggs explicados, comparações, bugs narrados, dicas, análises, podcasts, notícias; recusa o que sugere que ninguém fala (walkthrough/longplay/"4K 60FPS"/jogo completo sem sinal de comentário, edição de cutscenes, trailer, música) e, na dúvida num título só descritivo de gameplay, recusa. Sem chave: regex "GTA 6/VI", recusa os mesmos marcadores do pré-filtro (`radar.says_no_commentary`, uma fonte só) e descarta canal com 6+ cortes avaliados e até 15% aprovados;
   6. envia os da espera para `process_video` na ordem de `radar_jobs.waiting_queue`, até o **limite diário** (envios que falharam não contam);
   7. quem fica "na espera" por mais de 3 dias é descartado.
 
 **Ordem da fila** (`pipeline/ranking.py`): `views por hora ÷ √inscritos × peso do canal`.
 - **Views por hora:** views ÷ horas desde a publicação, medidas quando o Radar achou o vídeo. A idade é aproximada ("há 9 horas", via `approximate_date` do yt-dlp), com mínimo de 1 h; sem data, conta como 48 h.
 - **Inscritos:** abaixo de 10 mil, contam como 10 mil; se o canal esconde o número, contam como 100 mil. A raiz fica entre "velocidade pura" (canal grande sempre ganha) e "views por inscrito" (qualquer canal minúsculo ganharia).
-- **Peso do canal:** aprovados (inclui postados) ÷ decididos daquele canal, suavizado com 5 decisões "médias" e comparado à taxa geral, ao quadrado, limitado a 0,25×–3×. Canal sem histórico vale 1×. Recusa por "Cortou no meio" ou "Final ruim" não conta contra o canal (o erro foi do corte). O canal é casado pelo nome (`ranking.channel_key`: sem diferença de maiúsculas/espaços), porque `SourceVideo` não guarda o id do canal.
+- **Peso do canal:** aprovados (inclui postados) ÷ decididos daquele canal, suavizado com 5 decisões "médias" e comparado à taxa geral, ao quadrado, limitado a 0,25×–3×. Canal sem histórico vale 1×. Recusa por "Cortou no meio" ou "Final ruim" não conta contra o canal (o erro foi do corte); "Sem narração" (`no_commentary`) conta, de propósito: o canal posta gameplay puro. O canal é casado pelo nome (`ranking.channel_key`: sem diferença de maiúsculas/espaços), porque `SourceVideo` não guarda o id do canal.
 - `RadarCandidate.status`: `rejected` | `waiting` | `sent`. "Cortar mesmo assim" na UI ignora triagem e limite.
 
 Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
@@ -171,6 +178,7 @@ Cada etapa é idempotente: se o arquivo de saída já existe e é válido, pula.
 ## Regras
 
 - **Idioma:** títulos, descrições e hashtags são gerados **sempre no idioma original do vídeo**. Não traduzir.
+- **Zero cortes de gameplay puro (decisão do usuário).** Só gameplay comentado e reações: uma pessoa falando por cima do jogo. Não é "menos" gameplay puro, é nenhum. Não afrouxe as guardas (`pipeline/speech.py`, `has_commentary`, pré-filtro do Radar) sem recalibrar nos aprovados.
 - **UI em português (pt-BR).** Código, nomes de variáveis, funções, tabelas e commits em **inglês**.
 - **Segredos** só no `.env` (raiz do repo ou `backend/.env`, que tem prioridade). Nunca commitar `.env`, nunca logar nem mostrar chaves (a API e a UI só dizem se a chave existe). Manter `backend/.env.example` atualizado.
 - **`data/` nunca é versionado.**
@@ -214,6 +222,10 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 - `create_all` não altera tabelas existentes. `db.add_missing_columns()` adiciona colunas novas no startup (com default escalar ou NULL). Para renomear ou apagar coluna, escreva a migração à mão.
 - O YouTube às vezes responde "confirm you're not a bot" ou "video unavailable". `proc.explain_error()` põe uma dica em pt-BR acima do erro cru.
 - O prompt da IA é em português; sem o idioma explícito, a IA escrevia títulos de vídeos em inglês em português. Por isso `plan_with_claude` recebe `language` e o `ClipPlan` tem `video_language` preenchido antes dos cortes. Só `reason` é em pt-BR. Não remova isso.
+- **Cutscene tem fala: densidade de fala sozinha não prova que alguém comenta; quem decide é o `has_commentary`.** Um walkthrough sem narração cheio de cutscenes passa na guarda do vídeo (muitas palavras/min). A ordem dos campos do `ClipPlan` importa: `has_commentary` vem antes de `clips` para a IA se comprometer antes de escolher trechos (mesmo truque do `video_language`).
+- `energia` é o volume do áudio **todo**: tiro, explosão, motor e música do jogo também sobem. Não a trate como "fala agitada".
+- A legenda do YouTube escreve palavrão censurado como `[ __ ]`. É fala (e reação forte): `speech.clean_text` só apaga `[...]` que tem letra dentro.
+- O worker grava o retorno do handler como mensagem final; sem retorno, "Concluído". Um `_step(..., 1.0, "...")` no fim do handler é sobrescrito: devolva a mensagem.
 - `get_settings()` tem `lru_cache`: teste que muda `DATA_DIR` precisa chamar `get_settings.cache_clear()`.
 - faster-whisper 1.2 abre arquivos com PyAV usando `metadata_errors`, que o `av` 19 não aceita: nunca passe caminho ao Whisper, passe o array de `transcribe.decode_audio`.
 - O filtro `ass` do ffmpeg não lida bem com `C:\` no caminho: `cut.render_clip` escreve `captions.ass` numa pasta temporária e roda o ffmpeg com `cwd` nela (por isso os outros caminhos viram absolutos).
@@ -248,5 +260,6 @@ npx tsc -b --noEmit  # typecheck (o tsconfig raiz só tem references; sem -b nã
 6. ~~Legenda queimada estilo TikTok~~ feita.
 7. ~~Escolha melhor dos momentos: "mais repetidos" + capítulos, início/fim nas quebras da fala, motivos de recusa e exemplos do editor no prompt~~ feita.
 8. ~~Radar escolhe melhor os vídeos: velocidade (views/h para o tamanho do canal) e histórico de aprovação do canal na fila e na triagem~~ feito.
+9. ~~Pós-lançamento: só gameplay comentado (transcrição limpa, guardas de narração do vídeo e do corte, `has_commentary`, pré-filtro e triagem do Radar, motivo "Sem narração")~~ feito.
 
-Próximos candidatos: ver `docs/BACKLOG.md` (detecção de bordas desfocadas).
+Próximos candidatos: ver `docs/BACKLOG.md` (detecção de bordas desfocadas, dar olhos à IA).

@@ -6,7 +6,7 @@ import anthropic
 from pydantic import BaseModel
 
 from app.config import get_settings
-from app.pipeline.radar import Found
+from app.pipeline.radar import Found, says_no_commentary
 from app.pipeline.ranking import ChannelHistory, is_bad_channel
 
 GTA6 = re.compile(r"gta\s*(6|vi)\b|grand\s+theft\s+auto\s*(6|vi)\b", re.IGNORECASE)
@@ -23,16 +23,28 @@ class TriageResult(BaseModel):
 
 
 SYSTEM_PROMPT = """Você faz a triagem de vídeos do YouTube para um editor de cortes de GTA 6
-(TikTok/Reels). Os cortes só funcionam se o vídeo tiver FALA interessante sobre GTA 6.
+(TikTok/Reels). O GTA 6 já foi lançado. Os cortes só funcionam com uma PESSOA FALANDO: um
+youtuber ou streamer comentando ou reagindo por cima do jogo. Gameplay puro, sem ninguém
+comentando, nunca vira corte.
 
-keep=true para: notícias, vazamentos, análises, teorias, reações, podcasts, entrevistas,
-gameplay comentado, opiniões fortes sobre GTA 6. Qualquer idioma.
+keep=true para (qualquer idioma): gameplay comentado, reações, primeiras impressões,
+"testei"/"I tried"/"será que dá", descobertas, segredos e easter eggs explicados enquanto joga,
+comparações comentadas (ex.: GTA 5 vs GTA 6), bugs e física absurda narrados, dicas e guias
+narrados, análises, podcasts, opiniões fortes, notícias e atualizações sobre GTA 6.
 
 keep=false para:
+- sinal de que ninguém fala: walkthrough, longplay, "Part 1", "4K 60FPS", "Full Game",
+  "realistic graphics" sem nenhum sinal de comentário; edição de cutscenes ou "filme do jogo";
+  trailer; música, trilha sonora, rádio do jogo; compilação sem comentário;
 - não é sobre GTA 6 (GTA 5/Online, outros jogos, título usa GTA 6 só como isca);
-- provavelmente sem fala: música, trilha sonora, trailer puro, compilação sem comentário;
 - notícia repetida: mesmo assunto de um título em "Já enviados recentemente";
 - golpe, download pirata, "GTA 6 mobile/APK", mod falso.
+
+Sinais de que alguém comenta: reação ou opinião no título ("reagindo", "INSANO", "não acredito",
+"I can't believe"), primeira pessoa ("eu testei", "my first", "I found"), pergunta ao público,
+"comentado"/"commentary", canal conhecido por falar com o público, bom histórico do editor.
+Título de gameplay só descritivo ("GTA 6 Gameplay Walkthrough Part 3 - Vice City [4K 60FPS]"),
+sem nenhum desses sinais: na dúvida, keep=false.
 
 "editor: X de Y cortes aprovados" é o histórico do canal: dos cortes que o editor já avaliou
 de vídeos desse canal, quantos ele aprovou. Canal com quase tudo recusado (ex.: 1 de 8) é
@@ -80,6 +92,8 @@ def _heuristic_one(v: Found, history: ChannelHistory) -> Decision:
     record = history.of(v.channel)
     if not GTA6.search(v.title):
         keep, reason = False, "Título não fala de GTA 6 (sem IA)"
+    elif says_no_commentary(v.title):
+        keep, reason = False, "Gameplay sem narração (título, sem IA)"
     elif record is not None and is_bad_channel(record):
         keep = False
         reason = (
@@ -93,8 +107,9 @@ def _heuristic_one(v: Found, history: ChannelHistory) -> Decision:
 def triage_heuristic(
     videos: list[Found], history: ChannelHistory | None = None
 ) -> dict[str, Decision]:
-    """No API key: keep anything whose title mentions GTA 6 / GTA VI, unless the editor keeps
-    rejecting that channel's clips."""
+    """No API key: keep anything whose title mentions GTA 6 / GTA VI, unless the title says
+    nobody comments (same markers as the prefilter) or the editor keeps rejecting that
+    channel's clips."""
     history = history or ChannelHistory()
     return {v.youtube_id: _heuristic_one(v, history) for v in videos}
 

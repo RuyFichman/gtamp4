@@ -7,6 +7,7 @@ from app.pipeline.download import _pick_subtitle_url, parse_youtube_id
 from app.pipeline.energy import normalize_rms
 from app.pipeline.score import ClipIdea, plan_heuristic, sanitize
 from app.pipeline.transcribe import parse_json3
+from app.pipeline.types import Segment
 
 
 def test_parse_youtube_id_variants() -> None:
@@ -72,8 +73,13 @@ def test_normalize_rms_finds_loud_second() -> None:
 def test_heuristic_picks_loudest_window() -> None:
     energy = np.zeros(200)
     energy[120:160] = 1.0
-    ideas = plan_heuristic("Video", [], energy, duration=200)
+    talk = [
+        Segment(start=t, end=t + 2, text="alguém falando o tempo todo") for t in range(0, 200, 2)
+    ]
+    ideas = plan_heuristic("Video", talk, energy, duration=200)
     assert ideas and ideas[0].start_s == 120
+    # the same loud stretch with nobody talking (gunfire, music) is never a clip
+    assert plan_heuristic("Video", [], energy, duration=200) == []
 
 
 def test_cut_command_with_frame_and_encoder() -> None:
